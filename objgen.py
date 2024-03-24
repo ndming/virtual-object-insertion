@@ -27,8 +27,12 @@ def get_points(img, n_points, name):
     cv2.imshow(name, img)
     pts = []
     cv2.setMouseCallback(name, select_points, param=(img, pts, name))
+    init = False
     while True:
-        cv2.waitKey(1)
+        key = cv2.waitKey(1)
+        if key == 27 and len(pts) < n_points:
+            logger.error(f"received less than {n_points} points")
+            exit(1)
         if len(pts) >= n_points:
             cv2.destroyAllWindows()
             break
@@ -245,7 +249,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '--env-ratio', type=int, default=4, 
-        help="(512/env-ratio) portion of the env map will be filled with 0"
+        help="(512/env-ratio) portion of the env map that will be filled with 0"
+    )
+    parser.add_argument(
+        '--feature-scale', type=int, default=2, 
+        help="a power of 2 to resize (scale) noraml, albedo, and rough maps"
+    )
+    parser.add_argument(
+        '--pixel-samples', type=int, default=1024, 
+        help="number of pixels to sample during render, default to 1024"
     )
     parser.add_argument(
         '--conductor-roughness', type=float, default=0.2, 
@@ -297,8 +309,25 @@ if __name__ == "__main__":
     target_file = working_dir/"im.png"
     verify_filepath(target_file)
     target_img = cv2.imread(str(target_file))
-    target_rows, target_cols, _ = target_img.shape
     logger.debug(f"loaded target image of size: {target_img.shape}")
+
+    # Load the normal map
+    normal_file = working_dir/"normal.png"
+    verify_filepath(normal_file)
+    normal_map = cv2.imread(str(normal_file))
+    logger.debug(f"feature size: {normal_map.shape}")
+
+    # Resize images
+    target_rows, target_cols, _ = normal_map.shape
+    target_rows = target_rows * args.feature_scale
+    target_cols = target_cols * args.feature_scale
+    normal_map = cv2.resize(
+        normal_map, (target_cols, target_rows), interpolation = cv2.INTER_LINEAR
+    )
+    target_img = cv2.resize(
+        target_img, (target_cols, target_rows), interpolation = cv2.INTER_LINEAR
+    )
+    logger.debug(f"target size: {target_img.shape}")
 
     # Prompt and construct the plane
     logger.info("select 4 points in counter-clockwise order...")
@@ -311,9 +340,6 @@ if __name__ == "__main__":
     plane_eroded_mask = erode_mask(plane_mask, 1)
 
     # Process the normal map
-    normal_file = working_dir/"normal.png"
-    verify_filepath(normal_file)
-    normal_map = cv2.imread(str(normal_file))
     normal_z, normal_y, normal_x = cv2.split(normal_map)  # weird?!
     plane_nx = np.mean(normal_x[plane_eroded_mask].astype(np.float32))
     plane_ny = np.mean(normal_y[plane_eroded_mask].astype(np.float32))
@@ -374,6 +400,7 @@ if __name__ == "__main__":
         env_file = working_dir/"env.npz"
         verify_filepath(env_file)
         env_map = np.load(env_file)['env']
+        logger.debug(f"loaded Gaussian map: {env_map.shape}")
 
         # Pick the local environment map
         obj_frac_x = (obj_x.astype(float)[0] - 1) / (target_cols - 1)
@@ -418,11 +445,19 @@ if __name__ == "__main__":
         logger.info(f"EXR file written to: {exr_file.resolve().relative_to(Path.cwd())}")
         logger.info(f"HDR file written to: {hdr_file.resolve().relative_to(Path.cwd())}")
 
-    # Use the imgtool program to convert .png albedo map to .exr
+    # Load and resize the albedo map
     albedo_file = working_dir/"albedo.png"
     verify_filepath(albedo_file)
+    albedo_map = cv2.imread(str(albedo_file))
+    albedo_map = cv2.resize(
+        albedo_map, (target_cols, target_rows), interpolation = cv2.INTER_LINEAR
+    )
+    albedo_resized_file = output_dir/"albedo.png"
+    cv2.imwrite(str(albedo_resized_file), albedo_map)
+
+    # Use the imgtool program to convert albedo.png map to albedo.exr
     albedo_exr_file = output_dir/"albedo.exr"
-    imgtool_cmd = f"{imgtool_file} convert {albedo_file} --outfile {albedo_exr_file}"
+    imgtool_cmd = f"{imgtool_file} convert {albedo_resized_file} --outfile {albedo_exr_file}"
     result = run(imgtool_cmd, shell=True, capture_output=True, text=True)
     
     if result.returncode != 0:
@@ -432,10 +467,18 @@ if __name__ == "__main__":
     
     logger.info(f"EXR file written to: {albedo_exr_file.resolve().relative_to(Path.cwd())}")
 
-    # Copy rough map to the output directory
+    # Copy the resized target image to output dir
+    target_out_file = output_dir/"target.png"
+    cv2.imwrite(str(target_out_file), target_img)
+
+    # Resize and save rough map to the output directory
     rough_file = working_dir/"rough.png"
     verify_filepath(rough_file)
-    copy(rough_file, output_dir)
+    rough_map = cv2.imread(str(rough_file))
+    rough_map = cv2.resize(
+        rough_map, (target_cols, target_rows), interpolation = cv2.INTER_LINEAR
+    )
+    cv2.imwrite(str(output_dir/"rough.png"), rough_map)
 
     # pbrt works with vertical fov, in degree
     target_aspect = float(target_cols) / float(target_rows)
