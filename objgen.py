@@ -248,8 +248,8 @@ if __name__ == "__main__":
         help="scaling factor applied to the EXR environment map, default to 0.8"
     )
     parser.add_argument(
-        '--env-ratio', type=int, default=4, 
-        help="(512/env-ratio) portion of the env map that will be filled with 0"
+        '--ground-fraction', type=float, default=0.25, 
+        help="fraction of the env map that will be filled with 0, default to 0.25"
     )
     parser.add_argument(
         '--feature-scale', type=int, default=2, 
@@ -414,7 +414,7 @@ if __name__ == "__main__":
     
         # Process the selected environment map
         logger.info(f"processing local environment map, may take a little while...")
-        black_portion = int(512 / args.env_ratio)
+        black_portion = int(args.ground_fraction * 512)
         intact_portion = 512 - black_portion
         env_local = cv2.resize(
             env_local, (1024, intact_portion), interpolation = cv2.INTER_LINEAR

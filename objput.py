@@ -137,7 +137,7 @@ if __name__ == "__main__":
     p = h
     if args.exr:
         p = np.maximum(p, 0)
-        p = h / np.max(p)
+        p = p / np.max(p)
         p = p ** (1.0 / 2.2)
 
     rgb = (p * 255.0).astype(np.uint8)
