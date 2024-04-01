@@ -1,8 +1,9 @@
 import cv2, coloredlogs, logging, os, pyexr
 from argparse import ArgumentParser
+import inverse as inv
 import numpy as np
 from pathlib import Path
-from shutil import copy, move
+from shutil import move
 from subprocess import PIPE, DEVNULL, Popen, run
 from tqdm import tqdm
 from pbrw import PBRW
@@ -23,182 +24,8 @@ def verify_filepath(file: Path):
         raise FileNotFoundError(file.resolve().relative_to(Path.cwd()))
 
 
-def get_points(img, n_points, name):
-    cv2.imshow(name, img)
-    pts = []
-    cv2.setMouseCallback(name, select_points, param=(img, pts, name))
-    init = False
-    while True:
-        key = cv2.waitKey(1)
-        if key == 27 and len(pts) < n_points:
-            logger.error(f"received less than {n_points} points")
-            exit(1)
-        if len(pts) >= n_points:
-            cv2.destroyAllWindows()
-            break
-
-    return np.asarray(pts)
-
-
-def select_points(event, x, y, _, param):
-    if event == cv2.EVENT_LBUTTONDOWN:
-        img, pts, name = param
-        pts.append((x, y))
-        cv2.circle(img, (x, y), 4, (255, 0, 0), -1)
-        cv2.imshow(name, img)
-
-
-def build_plane_mask(px, py, rows, cols):
-    grid_x, grid_y = np.meshgrid(np.arange(cols), np.arange(rows))
-    mask = np.ones((rows, cols))
-
-    for n in range(len(px)):
-        if n == 3:
-            sx = px[0] - px[n]
-            sy = py[0] - py[n]
-        else:
-            sx = px[n + 1] - px[n]
-            sy = py[n + 1] - py[n]
-
-        mask *= ((grid_x - px[n]) * sy - (grid_y - py[n]) * sx) > 0
-
-    return mask > 0
-    
-
-def erode_mask(mask, radius):
-    diameter = radius * 2
-    es = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (diameter, diameter))
-    return cv2.erode(mask.astype(float), es) > 0
-
-
-def image_to_world(im_x, im_y, fov_deg, normal, rows, cols, ref=None):
-    aspect = float(cols) / float(rows)
-    tan_x = np.tan(np.radians(fov_deg / 2.0))
-    tan_y = tan_x / aspect
-
-    x = (((cols + 1) / 2.0) - im_x.astype(np.float32)) / ((cols - 1) / 2.0) * tan_x
-    y = (((rows + 1) / 2.0) - im_y.astype(np.float32)) / ((rows - 1) / 2.0) * tan_y
-    v = np.vstack((x, y, np.ones((len(x))))).T  # using row-vectors
-
-    # Use the normal vector to infer depth, assuming the first point in 
-    # the array is closest to the camera if ref is not specified
-    if ref is None:
-        ref = v[0]
-
-    for n in range(len(x)):
-        d = np.dot(ref, normal) / np.dot(v[n], normal)
-
-        if d < 0:
-            logger.error("reference point must have the closest depth!")
-            raise ValueError(f"{d} < 0")
-        
-        v[n] = d * v[n]
-    
-    return v.astype(np.float32)
-
-
-def rotate_env_map(map, normal):
-    # Compute the local coordinate system with z lining up with the normal,
-    # using right-handed coordinate systems
-    up = np.array([0, 1, 0], dtype=np.float32)
-    basis_z = normal
-    basis_z = basis_z / np.linalg.norm(basis_z)
-    basis_x = np.cross(up, basis_z)
-    basis_x = basis_x / np.linalg.norm(basis_x)
-    basis_y = np.cross(basis_z, basis_x)
-    basis_y = basis_y / np.linalg.norm(basis_y)
-    
-    basis_rotated = np.vstack((basis_x, basis_y, basis_z)).T
-    rx, ry, rz = basis_rotated
-
-    map_rotated = np.zeros(map.shape, dtype=np.float32)
-    rows, cols = map_rotated.shape[0], map_rotated.shape[1]
-    print()
-
-    for im_y in tqdm(range(rows)):
-        for im_x in range(cols):
-            theta = im_y / float(rows - 1) * np.pi
-            phi = im_x / float(cols) * np.pi * 2 - np.pi
-
-            z = np.sin(theta) * np.cos(phi)
-            x = np.sin(theta) * np.sin(phi)
-            y = np.cos(theta)
-
-            nx, ny, nz = x * rx + y * ry + z * rz
-
-            theta_n = np.arccos(nz)
-
-            nx = nx / (np.sqrt(1 - nz * nz) + 1e-12)
-            ny = ny / (np.sqrt(1 - nz * nz) + 1e-12)
-            nx = np.clip(nx, -1, 1)
-            ny = np.clip(ny, -1, 1)
-            nz = np.clip(nz, -1, 1)
-
-            phi_n = np.arccos(nx)
-            if ny < 0: 
-                phi_n = -phi_n
-
-            u, v = angle_to_uv(theta_n, phi_n)
-            color = uv_to_color(map, u, v)
-            map_rotated[im_y, im_x, :] = color
-
-    print()
-    return map_rotated
-
-
-def angle_to_uv(theta, phi):
-    u = (phi + np.pi) / 2 / np.pi
-    v = 1 - theta / np.pi
-    return u, v
-
-
-def uv_to_color(map, u, v):
-    height, width = map.shape[0], map.shape[1]
-    c, r = u * (width - 1), (1 - v) * (height - 1)
-    cs, rs = int(c), int(r)
-    ce = min(width - 1, cs + 1)
-    re = min(height - 1, rs + 1)
-    wc, wr = c - cs, r - rs
-    color1 = (1-wc) * map[rs, cs, :] + wc * map[rs, ce, :]
-    color2 = (1-wc) * map[re, cs, :] + wc * map[re, ce, :]
-    color = (1 - wr) * color1 + wr * color2
-    return color
-
-
-def get_object_transforms(normal, plane_pos, obj_pos, translate, scale, rotate):
-    # Compute the object's rotation
-    up = np.array([0.0, 1.0, 0.0], dtype=np.float32)
-    axis = np.cross(up, normal)
-
-    if np.sum(axis * axis) <= 1e-6:
-        axis = up
-        rotate_angle = 0.0
-    else:
-        axis = axis / np.linalg.norm(axis)
-        rotate_angle = np.arccos(np.sum(normal * up))
-
-    # Adjust the object's scale based on its distance to the reference points
-    obj_to_refs = [
-        np.linalg.norm(obj_pos - plane_pos[0]), 
-        np.linalg.norm(obj_pos - plane_pos[1])
-    ]
-    obj_scale = 0.2 * min(obj_to_refs)
-
-    # Remember to flip all the x-coordinates since
-    # pbrt works with left-hand coordinate systems!
-    obj_tf = [
-        f"Translate {-obj_pos[0]} {obj_pos[1]} {obj_pos[2]}",
-        f"Scale {obj_scale}  {obj_scale}  {obj_scale}",
-        f"Rotate {rotate_angle} {-axis[0]} {axis[1]} {axis[2]}",
-        f"Scale {scale}  {scale}  {scale}",
-        f"Rotate {rotate[0]} {-rotate[1]} {rotate[2]} {rotate[3]}",
-        f"Translate {-translate[0]} {translate[1]} {translate[2]}",
-    ]
-    return obj_tf
-
-
 def invoke_rendering(pbrt_file, render_file, gpu_enabled):
-    logger.info(f"invoking pbrt renderer for: {render_file.name}")
+    logger.info(f"[pbrt] invoking renderer for: {render_file.name}")
     pbrt_cmd = f"{pbrt_file} {render_file}"
     if (gpu_enabled): pbrt_cmd += " --gpu"
 
@@ -228,6 +55,10 @@ if __name__ == "__main__":
         help="path to the directory contaning pbrt and imgtool executables"
     )
     parser.add_argument(
+        '--target', type=str, default="", 
+        help="path to the target image, default to im.png in working dir"
+    )
+    parser.add_argument(
         '-gpu', action='store_true', 
         help="use wavefront rendering (GPU) for pbrt"
     )
@@ -240,11 +71,15 @@ if __name__ == "__main__":
         help="use the already computed HDR map in the working directory"
     )
     parser.add_argument(
+        '-no-render', action='store_true', 
+        help="do not render after genrating files"
+    )
+    parser.add_argument(
         '--fov', type=float, default=63.4149, 
         help="field of view in the x-axis, default to 63.4149"
     )
     parser.add_argument(
-        '--env-scale', type=float, default=0.8, 
+        '--env-scale', type=float, default=1, 
         help="scaling factor applied to the EXR environment map, default to 0.8"
     )
     parser.add_argument(
@@ -253,7 +88,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '--feature-scale', type=int, default=2, 
-        help="a power of 2 to resize (scale) noraml, albedo, and rough maps"
+        help="a power of 2 to resize (scale) normal, albedo, and rough maps"
     )
     parser.add_argument(
         '--pixel-samples', type=int, default=1024, 
@@ -284,10 +119,6 @@ if __name__ == "__main__":
         help="thickness of the medium between the two layers"
     )
     parser.add_argument(
-        '--translate', type=float, nargs=3, default=[0.0, 1.0, 0.0], 
-        help="custom translation to be applied to the rendered object"
-    )
-    parser.add_argument(
         '--scale', type=float, default=1.0, 
         help="custom uniform scale factor to be applied to the rendered object"
     )
@@ -306,7 +137,7 @@ if __name__ == "__main__":
         os.makedirs(output_dir)
 
     # Load the target image
-    target_file = working_dir/"im.png"
+    target_file = working_dir/"im.png" if not args.target else args.target
     verify_filepath(target_file)
     target_img = cv2.imread(str(target_file))
     logger.debug(f"loaded target image of size: {target_img.shape}")
@@ -317,27 +148,48 @@ if __name__ == "__main__":
     normal_map = cv2.imread(str(normal_file))
     logger.debug(f"feature size: {normal_map.shape}")
 
+    # Load the depth map
+    depth_file = working_dir/"depth.png"
+    verify_filepath(depth_file)
+    depth_map = cv2.imread(str(depth_file))
+
     # Resize images
     target_rows, target_cols, _ = normal_map.shape
-    target_rows = target_rows * args.feature_scale
-    target_cols = target_cols * args.feature_scale
+    target_rows = int(target_rows * args.feature_scale)
+    target_cols = int(target_cols * args.feature_scale)
     normal_map = cv2.resize(
-        normal_map, (target_cols, target_rows), interpolation = cv2.INTER_LINEAR
+        normal_map, (target_cols, target_rows), interpolation=cv2.INTER_LINEAR
     )
     target_img = cv2.resize(
-        target_img, (target_cols, target_rows), interpolation = cv2.INTER_LINEAR
+        target_img, (target_cols, target_rows), interpolation=cv2.INTER_LINEAR
+    )
+    depth_map = cv2.resize(
+        depth_map, (target_cols, target_rows), interpolation=cv2.INTER_LINEAR
     )
     logger.debug(f"target size: {target_img.shape}")
 
+    # Obtain the reference depth
+    depth_img = np.unravel_index(np.argmin(depth_map, axis=None), depth_map.shape)
+    depth_img = np.array(depth_img[0:2])
+    logger.debug(f"depth reference image coordinates: {depth_img}")
+    depth_ref = inv.world_from_image(depth_img, args.fov, target_img.shape).flatten()
+    logger.debug(f"depth reference world coordinates: {depth_ref}")
+
     # Prompt and construct the plane
     logger.info("select 4 points in counter-clockwise order...")
-    plane_coordinates = get_points(np.copy(target_img), 4, 'target_img')
-    plane_x = plane_coordinates[:, 0]
-    plane_y = plane_coordinates[:, 1]
+    plane_coords = None
+    try:
+        plane_coords = inv.prompt_image_points(np.copy(target_img), 4, 'target_img')
+    except ValueError:
+        logger.error(f"could not get the requested number of points")
+        exit(1)
+
+    plane_x = plane_coords[:, 0]
+    plane_y = plane_coords[:, 1]
     logger.debug(f"plane_x {plane_x}")
     logger.debug(f"plane_y {plane_y}")
-    plane_mask = build_plane_mask(plane_x, plane_y, target_rows, target_cols)
-    plane_eroded_mask = erode_mask(plane_mask, 1)
+    plane_mask = inv.build_plane_mask(plane_x, plane_y, target_rows, target_cols)
+    plane_eroded_mask = inv.erode_mask(plane_mask, 1)
 
     # Process the normal map
     normal_z, normal_y, normal_x = cv2.split(normal_map)  # weird?!
@@ -355,9 +207,13 @@ if __name__ == "__main__":
     plane_normal[2] = -plane_normal[2]
     logger.debug(f"plane normal: {plane_normal}")
 
-    # Compute the plane's world and uv coordinates
-    plane_p = image_to_world(
-        plane_x, plane_y, args.fov, plane_normal, target_rows, target_cols
+    # Compute the plane's world coordinates
+    plane_p = inv.world_from_image(
+        coords=plane_coords, 
+        fov=args.fov, 
+        shape=target_img.shape,
+        up=np.array([0, 0, 1]),
+        front=np.array([1, 0, 0])
     )
 
     # Compute the plane's uv coordinates, with v facing up
@@ -367,7 +223,12 @@ if __name__ == "__main__":
 
     # Write out the plane shape
     plane_shape_file = output_dir/"plane_shape.pbrt"
-    plane_n = np.tile(plane_normal, (np.size(plane_p, 0), 1))
+    plane_normal_pbrt = inv.change_basis(
+        coords=plane_normal,
+        up=np.array([0, 0, 1]),
+        front=np.array([1, 0, 0]),
+    )
+    plane_n = np.tile(plane_normal_pbrt, (plane_p.shape[0], 1))
     plane_indices = [0, 1, 2, 0, 2, 3]
     PBRW.write_shape(plane_shape_file, plane_p, plane_n, plane_uv, plane_indices)
 
@@ -378,16 +239,19 @@ if __name__ == "__main__":
     cv2.polylines(
         hint_img, [plane_poly], isClosed=True, color=(255, 0, 0), thickness=2
     )
-    obj_coordinates = get_points(np.copy(hint_img), 1, 'hint_img')
-    obj_x = obj_coordinates[:, 0]
-    obj_y = obj_coordinates[:, 1]
-    logger.debug(f"object location: {obj_coordinates}")
+    obj_coords = inv.prompt_image_points(np.copy(hint_img), 1, 'hint_img')
+    obj_x = obj_coords[:, 0]
+    obj_y = obj_coords[:, 1]
+    logger.debug(f"object location: {obj_coords[0]}")
 
     # Compute the object's world coordinates
-    obj_ref = plane_p[0]
-    obj_p = image_to_world(
-        obj_x, obj_y, args.fov, plane_normal, 
-        target_rows, target_cols, plane_p[0]
+    obj_p = inv.world_from_image(
+        coords=obj_coords, 
+        fov=args.fov, 
+        shape=target_img.shape,
+        up=np.array([0, 0, 1]),
+        front=np.array([1, 0, 0]), 
+        depth_ref=plane_p[0],
     )
 
     # On to the environment map
@@ -400,34 +264,35 @@ if __name__ == "__main__":
         env_file = working_dir/"env.npz"
         verify_filepath(env_file)
         env_map = np.load(env_file)['env']
-        logger.debug(f"loaded Gaussian map: {env_map.shape}")
+        logger.debug(f"loaded env map: {env_map.shape}")
 
         # Pick the local environment map
         obj_frac_x = (obj_x.astype(float)[0] - 1) / (target_cols - 1)
         obj_frac_y = (obj_y.astype(float)[0] - 1) / (target_rows - 1)
         env_rows, env_cols = env_map.shape[0], env_map.shape[1]
-        env_x, env_y = (env_cols -1) * obj_frac_x, (env_rows - 1) * obj_frac_y
+        env_x, env_y = (env_cols - 1) * obj_frac_x, (env_rows - 1) * obj_frac_y
         env_y = np.clip(np.round(env_y), 0, env_rows - 1)
         env_x = np.clip(np.round(env_x), 0, env_cols - 1)
         env_x, env_y = int(env_x), int(env_y)
+        logger.debug(f"env coordinates: [{env_x}, {env_y}]")
         env_local = env_map[env_y, env_x, :, :, :]
     
         # Process the selected environment map
-        logger.info(f"processing local environment map, may take a little while...")
-        black_portion = int(args.ground_fraction * 512)
-        intact_portion = 512 - black_portion
+        ground_portion = int(args.ground_fraction * 512)
+        intact_portion = 512 - ground_portion
         env_local = cv2.resize(
             env_local, (1024, intact_portion), interpolation = cv2.INTER_LINEAR
         )
-        env_black = np.zeros([black_portion, 1024, 3], dtype=np.float32)
-        env = np.concatenate([env_local, env_black], axis=0)
-        hdr = rotate_env_map(env, plane_normal)
+        env_ground = np.zeros([ground_portion, 1024, 3], dtype=np.float32)
+        env = np.concatenate([env_local, env_ground], axis=0)
+        plane_normal[0] = -plane_normal[0]
+        hdr = inv.rotate_env_map(env, plane_normal)
         logger.debug(f"generated env HDR: [{np.min(hdr)} - {np.max(hdr)}]")
 
-        # Export the HDR map as EXR
-        hdr_flipped = np.flip(hdr, axis=2)  # should we?
-        pyexr.write(str(exr_file), np.maximum(hdr_flipped, 0))  # definitely!
-        hdr_file = output_dir/"env.hdr"  # for debug
+        # Export HDR env map as EXR
+        hdr_flipped = np.flip(hdr, axis=2)  # convert from BGR to RGB
+        pyexr.write(str(exr_file), np.maximum(hdr_flipped, 0))
+        hdr_file = output_dir/"env.hdr"     # for debug
         cv2.imwrite(str(hdr_file), np.maximum(hdr, 0))
 
         # Use the imgtool program to convert equirectangular map to
@@ -435,6 +300,8 @@ if __name__ == "__main__":
         pbrt_dir = Path(os.path.abspath(args.pbrt_dir))
         imgtool_file = pbrt_dir/"imgtool"
         imgtool_cmd = f"{imgtool_file} makeequiarea {exr_file} --outfile {exr_file}"
+        
+        logger.info(f"[imgtool] encoding env map as octahedral representation...")
         result = run(imgtool_cmd, shell=True, capture_output=True, text=True)
     
         if result.returncode != 0:
@@ -492,13 +359,9 @@ if __name__ == "__main__":
         reflectance=args.reflectance,
         thickness=args.thickness,
     )
-    obj_transforms = get_object_transforms(
-        normal=plane_normal,
-        plane_pos=plane_p,
-        obj_pos=obj_p.flatten(),
-        translate=args.translate,
-        scale=args.scale,
-        rotate=args.rotate,
+    obj_transforms = PBRW.transform_sequence(
+        translate=obj_p.flatten() + np.array([0, 0, args.scale]), 
+        scale=args.scale
     )
 
     # Plane's material
@@ -560,12 +423,12 @@ if __name__ == "__main__":
         .build(mall_film_name)
     
     mall_writer.add_light_distant(
-        l_to=np.array([0.0, -1.0, 0.0], dtype=np.float32),
+        l_to=np.array([0.0, 0.0, -1.0], dtype=np.float32),
         rgb_L=np.array([1.0, 1.0, 1.0], dtype=np.float32),
         scale=2,
     )
     mall_writer.add_light_distant(
-        l_to=np.array([0.0, 0.0, 1.0], dtype=np.float32),
+        l_to=np.array([-1.0, 0.0, 0.0], dtype=np.float32),
         rgb_L=np.array([1.0, 1.0, 1.0], dtype=np.float32),
         scale=2,
     )
@@ -590,11 +453,11 @@ if __name__ == "__main__":
         .build(mobj_film_name)
     
     mobj_writer.add_light_distant(
-        l_to=np.array([0.0, 0.0, 1.0], dtype=np.float32),
+        l_to=np.array([0.0, 0.0, -1.0], dtype=np.float32),
         rgb_L=np.array([1.0, 1.0, 1.0], dtype=np.float32),
     )
     mobj_writer.add_light_distant(
-        l_to=np.array([0.0, 0.0, -1.0], dtype=np.float32),
+        l_to=np.array([-1.0, 0.0, 0.0], dtype=np.float32),
         rgb_L=np.array([1.0, 1.0, 1.0], dtype=np.float32),
     )
 
@@ -603,6 +466,9 @@ if __name__ == "__main__":
 
     mobj_render_file = output_dir/"mask_obj.pbrt"
     mobj_writer.write_scene(mobj_render_file)
+
+    if args.no_render:
+        exit(0)
 
     # Render the I_all scene
     pbrt_file = pbrt_dir/"pbrt"

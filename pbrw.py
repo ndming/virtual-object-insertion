@@ -16,9 +16,9 @@ coloredlogs.install(
 class PBRW:
     def __init__(self):
         self.look_at = np.array([
-            [0.0,  0.0,  0.0],
-            [0.0,  0.0,  1.0],
-            [0.0,  1.0,  0.0],
+            [ 0.0,  0.0,  0.0],
+            [-1.0,  0.0,  0.0],
+            [ 0.0,  0.0,  1.0],
         ], dtype=np.float32)
 
         self.camera = "perspective"
@@ -160,7 +160,7 @@ class PBRW:
             self._write_lights(scene_file)
             self._write_attributes(scene_file)
         
-        logger.info(f"scene file written to: {file.resolve().relative_to(Path.cwd())}")
+        logger.info(f"pbrt file written to: {file.resolve().relative_to(Path.cwd())}")
         
 
     def _write_look_at(self, file):
@@ -249,12 +249,12 @@ class PBRW:
 
             shape_file.write("Shape \"trianglemesh\"\n")
 
-            # Write positions
+            # Write positions, flip all the x-coordinates
             shape_file.write("\t\"point3 P\" [\n")
             for p in positions: shape_file.write(f"\t\t{-p[0]} {p[1]} {p[2]}\n")
             shape_file.write("\t]\n")
 
-            # Write normals
+            # Write normals, flip all the x-coordinates
             shape_file.write("\t\"normal N\" [\n")
             for n in normals: shape_file.write(f"\t\t{-n[0]} {n[1]} {n[2]}\n")
             shape_file.write("\t]\n")
@@ -273,3 +273,21 @@ class PBRW:
             shape_file.write("\n\t]\n")
     
         logger.info(f"shape file written to: {file.resolve().relative_to(Path.cwd())}")
+
+    
+    @staticmethod
+    def transform_sequence(
+        rotate: tuple[float, float, float, float] | np.ndarray = (0, 1, 0, 0), 
+        scale: float | tuple[float, float, float] | np.ndarray = 1.0, 
+        translate: tuple[float, float, float] | np.ndarray = (0, 0, 0),
+    ) -> list[str]:
+        if isinstance(scale, float):
+            scale = np.array([scale, scale, scale])
+
+        # Remember to flip all the x-coordinates since
+        # pbrt works with left-hand coordinate systems!
+        return [
+            f"Translate {-translate[0]} {translate[1]} {translate[2]}",
+            f"Scale {scale[0]}  {scale[1]}  {scale[2]}",
+            f"Rotate {rotate[0]} {-rotate[1]} {rotate[2]} {rotate[3]}",
+        ]

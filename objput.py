@@ -4,6 +4,7 @@ import numpy as np
 from pathlib import Path
 import OpenEXR as exr
 from Imath import PixelType
+from inverse import erode_mask
 
 
 logger = logging.getLogger(__name__)
@@ -64,12 +65,6 @@ def load_exr(file: Path):
     b = np.reshape(b_array, (rows, cols))
 
     return np.stack((b, g, r), axis=2)
-
-
-def erode_mask(mask, radius):
-    diameter = radius * 2
-    es = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (diameter, diameter))
-    return cv2.erode(mask.astype(float), es) > 0
     
 
 if __name__ == "__main__":
@@ -134,13 +129,16 @@ if __name__ == "__main__":
     logger.debug(f"result range: {np.min(h)} - {np.max(h)}")
 
     # Make a copy of the result and display
-    p = h
+    copy = h
     if args.exr:
-        p = np.maximum(p, 0)
-        p = p / np.max(p)
-        p = p ** (1.0 / 2.2)
+        # copy = np.maximum(copy, 0)
+        # copy = copy / np.max(copy)
+        # copy = copy ** (1.0 / 2.2)
+        # Turn HDR to LDR for display
+        copy = copy / np.mean(copy) * 0.5
+        copy = np.clip(copy, 0, 1) ** (1.0 / 2.2)
 
-    rgb = (p * 255.0).astype(np.uint8)
+    rgb = (copy * 255.0).astype(np.uint8)
     cv2.imshow('result', rgb)
     cv2.waitKey()
 
