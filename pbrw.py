@@ -240,7 +240,13 @@ class PBRW:
         
 
     @staticmethod
-    def write_shape(file, positions, normals, uv, indices):
+    def write_shape(
+        file: Path, 
+        positions: np.ndarray[np.float32], 
+        normals: np.ndarray[np.float32], 
+        uv: np.ndarray[np.float32], 
+        indices: np.ndarray[int] | list[int]
+    ):
         with open(file, 'w') as shape_file:
             # Header comments
             current_time = datetime.now()

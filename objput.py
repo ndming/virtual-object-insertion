@@ -112,7 +112,7 @@ if __name__ == "__main__":
     if args.exr: i = i ** 2.2
 
     # Process masks
-    m_all = erode_mask(m_all, 2)
+    m_all = erode_mask(m_all, 4)
     m_pln = np.clip(m_all.astype(float) - m_obj.astype(float), 0, None)
     m_pln = m_pln > 0
 
@@ -124,19 +124,17 @@ if __name__ == "__main__":
     k_sd = np.minimum(k_sd, 1)
     
     # Insert the object
-    h = i * (1 - m_all) + i * k_sd * m_all
-    h = i_all * m_obj + h * (1 - m_obj)
+    h = i * (1.0 - m_all) + i * k_sd * m_all
+    h = i_all * m_obj + h * (1.0 - m_obj)
     logger.debug(f"result range: {np.min(h)} - {np.max(h)}")
 
     # Make a copy of the result and display
     copy = h
     if args.exr:
-        # copy = np.maximum(copy, 0)
-        # copy = copy / np.max(copy)
-        # copy = copy ** (1.0 / 2.2)
         # Turn HDR to LDR for display
-        copy = copy / np.mean(copy) * 0.5
-        copy = np.clip(copy, 0, 1) ** (1.0 / 2.2)
+        copy = np.maximum(copy, 0)
+        copy = copy / np.max(copy)
+        copy = copy ** (1.0 / 2.2)
 
     rgb = (copy * 255.0).astype(np.uint8)
     cv2.imshow('result', rgb)
@@ -144,7 +142,7 @@ if __name__ == "__main__":
 
     # Write out the result
     if args.output:
-        out_file = Path(os.path.abspath(args.output))
+        out_file = res_dir/args.output
         if out_file.suffix == ".exr":
             if not args.exr: 
                 h = h ** 2.2

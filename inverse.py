@@ -52,29 +52,101 @@ def prompt_image_points(
     return np.asarray(points)
 
 
-def _select_point_callback(event, x, y, _, param):
+def _select_point_callback(event, x, y, _, param: tuple[np.ndarray, list[tuple], str]):
     if event == cv2.EVENT_LBUTTONDOWN:
-        img, pts, name = param
-        pts.append((x, y))
+        img, points, window_name = param
+        points.append((x, y))
         cv2.circle(img, (x, y), 4, (255, 0, 0), -1)
-        cv2.imshow(name, img)
+        cv2.imshow(window_name, img)
 
 
-def build_plane_mask(plane_x, plane_y, rows, cols):
-    grid_x, grid_y = np.meshgrid(np.arange(cols), np.arange(rows))
-    mask = np.ones((rows, cols))
+def polygon_mask(
+    img_coords: np.ndarray, 
+    shape: np.ndarray | tuple[int, int]
+) -> np.ndarray[bool]:
+    """
+    Generates a boolean mask of size `shape` indicating whether each point in a 
+    grid lies within the polygon defined by image coordinates `img_coords`.
 
-    for n in range(len(plane_x)):
-        if n == 3:
-            sx = plane_x[0] - plane_x[n]
-            sy = plane_y[0] - plane_y[n]
-        else:
-            sx = plane_x[n + 1] - plane_x[n]
-            sy = plane_y[n + 1] - plane_y[n]
+    Parameters:
+    ---
+    - `img_coords`: an `n-by-2` array containing the image coordinates defining 
+    the polygon vertices
+    - `shape`: the shape of the output mask
 
-        mask *= ((grid_x - plane_x[n]) * sy - (grid_y - plane_y[n]) * sx) > 0
+    Returns:
+    ---
+    A boolean mask where `True` indicates points within the polygon and `False` 
+    indicates points outside the polygon.
 
-    return mask > 0
+    Raises:
+    - `ValueError`: if the number of points is less than 3 or the input array is 
+    not two-dimensional.
+
+    Example:
+    ---
+    >>> # Define polygon vertices
+    >>> polygon_vertices = np.array([[100, 50], [200, 100], [150, 200]])
+
+    >>> # Define the shape of the output mask
+    >>> output_shape = (300, 300)
+
+    >>> # Generate boolean mask for the polygon
+    >>> mask = polygon_mask(polygon_vertices, output_shape)
+
+    """
+
+    n_points = img_coords.shape[0]
+    if n_points < 3 or np.ndim(img_coords) < 2:
+        raise ValueError(f"could not build a polygon with less than 3 points")
+    
+    # Avoid modifying the passed array
+    coords = np.copy(img_coords).astype(float)
+
+    # Turn y-coordinates into standard direction and check for winding order
+    cts_coords = np.copy(img_coords)
+    cts_coords[:, 1] = 255 - cts_coords[:, 1]
+    if not _is_ccw(cts_coords):
+        coords = np.flip(coords, axis=0)
+
+    # Define the next adjacent points
+    adj_coords = np.zeros(coords.shape)
+    adj_coords[0:-1] = coords[1:]
+    adj_coords[-1] = coords[0]
+
+    # The normal vectors for each line segmentS
+    directions = adj_coords - coords
+    normals = directions[:, [1, 0]] * np.array([1, -1])
+
+    rows, cols = shape[0:2]
+    m_x, m_y = np.meshgrid(np.arange(cols), np.arange(rows))
+    grid = np.vstack([m_x.flatten(), m_y.flatten()]).T
+    grid = np.tile(np.expand_dims(grid, axis=2), [1, 1, n_points])
+    normals = np.swapaxes(np.expand_dims(normals, axis=2), 0, 2)
+    coords = np.swapaxes(np.expand_dims(coords, axis=2), 0, 2)
+
+    # Check if points in the mesh grid lie on the left or on the right to each
+    # line segment, then "and" all results
+    mask = np.sum((grid - coords) * normals, axis=1) >= 0
+    mask = np.logical_and.reduce(mask, axis=1).reshape(rows, cols)
+
+    return mask
+
+
+def _is_ccw(coords: np.ndarray) -> bool:
+    # Construct an array of adjacent coordinates
+    adj_coords = np.zeros(coords.shape)
+    adj_coords[0:-1] = coords[1:]
+    adj_coords[-1] = coords[0]
+    
+    # Compute the sign area using the shoelace algorithm
+    s_area = coords * adj_coords[:, [1, 0]]
+    s_area = np.sum(s_area[:, 0] - s_area[:, 1])
+    
+    if s_area == 0:
+        raise ValueError(f"the provided coordinate sequence is not valid")
+    
+    return s_area > 0
     
 
 def erode_mask(mask: np.ndarray, radius) -> np.ndarray[bool]:
@@ -138,16 +210,13 @@ def world_from_image(
     tan_x = np.tan(np.radians(fov / 2.0))
     tan_y = tan_x / aspect
 
-    if np.ndim(coords) == 1:
-        coords = coords.reshape(1, 2)
-
-    n_points = coords.shape[0]
+    n_points = 1 if np.ndim(coords) == 1 else coords.shape[0]
     half_img = np.array([(cols - 1) / 2.0, (rows - 1) / 2.0])
     half_mat = np.tile(half_img, (n_points, 1))
 
     # Convert to world coordinates with depth=1, up=+Y, and front=+Z
     local_coords = np.array([tan_x, tan_y]) * (half_mat - coords) / half_mat
-    local_coords = np.hstack((local_coords, np.ones((n_points, 1))))
+    local_coords = np.hstack([local_coords, np.ones((n_points, 1))])
     world_coords = change_basis(local_coords, up, front)
 
     # Compute depth, or exit early if necessary
@@ -158,7 +227,7 @@ def world_from_image(
 
     depth_scales = np.dot(depth_ref, up) / np.sum(world_coords * up, axis=1)
     if not np.all((depth_scales > 0) & np.isfinite(depth_scales)):
-        raise ValueError(f"focal values are not valid")
+        raise ValueError(f"depth scales are not valid")
     
     world_coords = world_coords * depth_scales[:, np.newaxis]
     return world_coords.astype(np.float32)
@@ -181,7 +250,7 @@ def change_basis(coords, up, front):
 
     Raises:
     ---
-    - `ValueError`: if the up and front vectors are not orthogonal.
+    - `ValueError`: if the `up` and `front` vectors are not orthogonal.
 
     Examples:
     ---
@@ -195,45 +264,42 @@ def change_basis(coords, up, front):
     """
 
     # Orthogonal check
-    up = up / np.linalg.norm(up)
-    front = front / np.linalg.norm(front)
-    if not np.isclose(np.dot(up, front), 0):
+    up_n = up / np.linalg.norm(up)
+    front_n = front / np.linalg.norm(front)
+    if not np.isclose(np.dot(up_n, front_n), 0):
         raise ValueError(f"{up} and {front} are not orthogonal")
     
     # Transform to the basis specified by up and front
-    right = np.cross(up, front)
-    right = right / np.linalg.norm(right)
-    world_mat = np.vstack((right, up, front)).T
+    right = np.cross(up_n, front_n)
+    right_n = right / np.linalg.norm(right)
+    world_mat = np.vstack([right_n, up_n, front_n]).T
     return (world_mat @ coords.T).T  # using row-vectors
 
 
-def get_relative_transform(orientation, up, position, depth_ref):
-    axis = np.cross(up, orientation)
+def rotate_env_map(map: np.ndarray, normal: np.ndarray) -> np.ndarray[np.float32]:
+    """
+    Rotates the environment `map` based on the given `normal` vector.
 
-    if np.sum(axis * axis) <= 1e-6:
-        axis = up
-        rotate_angle = 0.0
-    else:
-        axis = axis / np.linalg.norm(axis)
-        rotate_angle = np.arccos(np.sum(orientation * up))
-    
-    rotate = np.array([rotate_angle, axis[0], axis[1], axis[2]])
+    Parameters:
+    ---
+    - `map`: a 3D environment map array (rows, cols, colors).
+    - `normal`: the vector representing the normal direction relative to the y-axis. 
 
-    scale = np.linalg.norm(position - depth_ref)
-    scale = np.array([scale, scale, scale])
+    Returns:
+    ---
+    The rotated environment map with the same shape as `map`.
 
-    return (rotate, scale)
+    Example:
+    ---
+    >>> # Rotate an environment map based on the normal vector (0, 1, 0)
+    >>> rotated_map = rotate_env_map(env_map, np.array([0, 1, 0]))
+    """
 
-
-def rotate_env_map(
-    map: np.ndarray,
-    normal: np.ndarray,
-) -> np.ndarray[np.float32]:
     up = np.array([0, 1, 0])
     right = np.cross(up, normal)
     front = np.cross(normal, right)
 
-    normal = normal / np.linalg.norm(normal)
+    norml = normal / np.linalg.norm(normal)
     right = right / np.linalg.norm(right)
     front = front / np.linalg.norm(front)
 
@@ -246,8 +312,8 @@ def rotate_env_map(
     x = np.sin(theta) * np.sin(phi)
     y = np.cos(theta)
 
-    coords = np.vstack((x.flatten(), y.flatten(), z.flatten()))
-    mat_rotate = np.vstack((right, front, normal)).T
+    coords = np.vstack([x.flatten(), y.flatten(), z.flatten()])
+    mat_rotate = np.vstack([right, front, norml]).T
     coords_r = mat_rotate @ coords
 
     x_rotate = coords_r[0, :].reshape(rows, cols)
@@ -275,6 +341,7 @@ def rotate_env_map(
 def _uv_to_color(map: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
     rows, cols = map.shape[0], map.shape[1]
 
+    # Find the target and neighbor pixels
     x, y = u * (cols - 1), v * (rows - 1)
     px, py = x.astype(int), y.astype(int)
     qx = np.minimum(cols - 1, px + 1)  # the next neighbor pixel along x
@@ -282,11 +349,30 @@ def _uv_to_color(map: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
 
     # Fraction to interleave pixels
     fx, fy = x - px, y - py
-    fx = np.stack((fx, fx, fx), axis=2)
-    fy = np.stack((fy, fy, fy), axis=2)
+    fx = np.stack([fx, fx, fx], axis=2)
+    fy = np.stack([fy, fy, fy], axis=2)
 
+    # Interleave along x first, then y
     p_color = (1 - fx) * map[py, px, :] + fx * map[py, qx, :]
     q_color = (1 - fx) * map[qy, px, :] + fx * map[qy, qx, :]
     color = (1 - fy) * p_color + fy * q_color
 
     return color
+
+
+def get_relative_transform(orientation, up, position, depth_ref):
+    axis = np.cross(up, orientation)
+
+    if np.sum(axis * axis) <= 1e-6:
+        axis = up
+        rotate_angle = 0.0
+    else:
+        axis = axis / np.linalg.norm(axis)
+        rotate_angle = np.arccos(np.sum(orientation * up))
+    
+    rotate = np.array([rotate_angle, axis[0], axis[1], axis[2]])
+
+    scale = np.linalg.norm(position - depth_ref)
+    scale = np.array([scale, scale, scale])
+
+    return (rotate, scale)
