@@ -1,4 +1,4 @@
-__pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 
@@ -23,3 +23,8 @@ venv.bak/
 
 # Generated files
 data/**/out/
+output/
+
+# Lighthouse mirror
+lighthouse/model/
+lighthouse/testset/
