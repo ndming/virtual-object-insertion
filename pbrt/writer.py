@@ -1,15 +1,14 @@
 from datetime import datetime
 from pathlib import Path
-from logging import Logger
 import numpy as np
 import logging, coloredlogs
 
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+_logger = logging.getLogger(__name__)
+_logger.setLevel(logging.DEBUG)
 coloredlogs.install(
-    level='DEBUG', logger=logger, 
-    fmt='%(asctime)s - %(levelname)s - %(message)s', datefmt='%H:%M:%S'
+    level='DEBUG', logger=_logger, 
+    fmt='%(programname)s - %(levelname)s - %(message)s'
 )
 
 
@@ -82,7 +81,7 @@ class PBRW:
 
         def build(self, film_name: str):
             if self.__pbrw.film == "spectral" and not film_name.endswith(".exr"):
-                logger.error("spectral film must be written in OpenEXR format!")
+                _logger.error("spectral film must be written in OpenEXR format!")
                 raise ValueError(f"film is {self.__film} but output format is not exr: {film_name}")
             
             self.__pbrw.film_name = film_name
@@ -92,7 +91,7 @@ class PBRW:
     
     def add_light_infinite(self, env_map: Path, illuminance=None, scale=None):
         if not env_map.exists():
-            logger.error("could not find the file specified!")
+            _logger.error("could not find the file specified!")
             raise FileNotFoundError(env_map.resolve().relative_to(Path.cwd()))
         
         self.lights['infinite'].append({
@@ -160,7 +159,7 @@ class PBRW:
             self._write_lights(scene_file)
             self._write_attributes(scene_file)
         
-        logger.info(f"pbrt file written to: {file.resolve().relative_to(Path.cwd())}")
+        _logger.info(f"pbrt file written to: {file.resolve().relative_to(Path.cwd())}")
         
 
     def _write_look_at(self, file):
@@ -278,7 +277,7 @@ class PBRW:
                 shape_file.write(f"{i}")
             shape_file.write("\n\t]\n")
     
-        logger.info(f"shape file written to: {file.resolve().relative_to(Path.cwd())}")
+        _logger.info(f"shape file written to: {file.resolve().relative_to(Path.cwd())}")
 
     
     @staticmethod

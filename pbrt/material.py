@@ -107,3 +107,20 @@ def diffuse(reflectance=np.array([1.0, 1.0, 1.0])):
         }
     ]
     return textures, material, params
+
+
+def conductor(reflectance=np.array([1.0, 1.0, 1.0]), roughness=0.1):
+    textures = []
+    material = "conductor"
+    params = [
+        {
+            'name': "float roughness",
+            'value': np.array([ roughness ], dtype=np.float32),
+        },
+        {
+        
+            'name': "rgb reflectance",
+            'value': np.array(reflectance, dtype=np.float32),
+        },
+    ]
+    return textures, material, params

@@ -13,6 +13,7 @@ import BilateralLayer as bs
 import torch.nn.functional as F
 import scipy.io as io
 import utils
+import pathlib
 
 parser = argparse.ArgumentParser()
 # The locationi of testing set
@@ -61,7 +62,7 @@ parser.add_argument('--isBS', action='store_true', help='whether to use bilatera
 
 # Image Picking
 opt = parser.parse_args()
-print(opt)
+# print(opt)
 
 opt.gpuId = opt.deviceIds[0]
 
@@ -96,11 +97,11 @@ nitersBS = [opt.niterBS0, opt.niterBS1 ]
 imHeights = [opt.imHeight0, opt.imHeight1 ]
 imWidths = [opt.imWidth0, opt.imWidth1 ]
 
-os.system('mkdir {0}'.format(opt.testRoot ) )
-os.system('cp *.py %s' % opt.testRoot )
+# os.system('mkdir {0}'.format(opt.testRoot ) )
+# os.system('cp *.py %s' % opt.testRoot )
 
 opt.seed = 0
-print("Random Seed: ", opt.seed )
+# print("Random Seed: ", opt.seed )
 random.seed(opt.seed )
 torch.manual_seed(opt.seed )
 
@@ -228,12 +229,14 @@ if opt.cuda:
 
 
 ####################################
-outfilename = opt.testRoot + '/results'
-for n in range(0, opt.level ):
-    outfilename = outfilename + '_brdf%d' % nepochs[n]
-    if opt.isLight:
-        outfilename += '_light%d' % nepochsLight[n]
-os.system('mkdir -p {0}'.format(outfilename ) )
+# outfilename = opt.testRoot + '/results'
+# for n in range(0, opt.level ):
+#     outfilename = outfilename + '_brdf%d' % nepochs[n]
+#     if opt.isLight:
+#         outfilename += '_light%d' % nepochsLight[n]
+outfilename = opt.testRoot
+os.makedirs(opt.testRoot, exist_ok=True)
+# os.system('mkdir -p {0}'.format(outfilename ) )
 
 with open(opt.imList, 'r') as imIdIn:
     imIds = imIdIn.readlines()
@@ -243,7 +246,7 @@ imList = sorted(imList )
 j = 0
 for imName in imList:
     j += 1
-    print('%d/%d: %s' % (j, len(imList), imName) )
+    # print('%d/%d: %s' % (j, len(imList), imName) )
 
     imBatches = []
 
@@ -257,8 +260,9 @@ for imName in imList:
     cLightNames = []
     shadingNames, envmapsPredSGNames = [], []
 
-    imId = imName.split('/')[-1]
-    print(imId )
+    imPath = pathlib.Path(imName)
+    imId = imPath.name
+    # print(imId)
     imOutputNames.append(osp.join(outfilename, imId ) )
 
     for n in range(0, opt.level ):
@@ -313,7 +317,10 @@ for imName in imList:
 
         im = (np.transpose(im, [2, 0, 1] ).astype(np.float32 ) / 255.0 )[np.newaxis, :, :, :]
         im = im / im.max()
-        imBatches.append( Variable(torch.from_numpy(im**(2.2) ) ).cuda() )
+        imBatch = Variable(torch.from_numpy(im**(2.2)))
+        if opt.cuda:
+            imBatch = imBatch.cuda()
+        imBatches.append(imBatch)
 
     nh, nw = newImHeight[-1], newImWidth[-1]
 
@@ -337,7 +344,9 @@ for imName in imList:
 
     im = (np.transpose(im, [2, 0, 1] ).astype(np.float32 ) / 255.0 )[np.newaxis, :, :, :]
     im = im / im.max()
-    imBatchSmall = Variable(torch.from_numpy(im**(2.2) ) ).cuda()
+    imBatchSmall = Variable(torch.from_numpy(im**(2.2) ) )
+    if opt.cuda:
+        imBatchSmall = imBatchSmall.cuda()
     renderLayer = models.renderingLayer(isCuda = opt.cuda,
             imWidth=newEnvWidth, imHeight=newEnvHeight, fov = fov,
             envWidth = opt.envWidth, envHeight = opt.envHeight)
@@ -364,7 +373,7 @@ for imName in imList:
 
     # Normalize Albedo and depth
     bn, ch, nrow, ncol = albedoPred.size()
-    albedoPred = albedoPred.view(bn, -1)
+    albedoPred = albedoPred.contiguous().view(bn, -1)
     albedoPred = albedoPred / torch.clamp(torch.mean(albedoPred, dim=1), min=1e-10).unsqueeze(1) / 3.0
     albedoPred = albedoPred.view(bn, ch, nrow, ncol)
 
