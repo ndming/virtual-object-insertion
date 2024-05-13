@@ -41,13 +41,13 @@ def generate_normal(depth: Image) -> Image:
 
 def generate_bundle(
     target: Image, source: Image, rdepth: np.ndarray, 
-    focal, env_coords: np.ndarray, ep_fraction
+    focal: tuple[float, float], env_coords: np.ndarray
 ) -> dict:
     ref_image, src_image = _get_ref_src_image(target, source)
     ref_depth = np.expand_dims(rdepth, axis=0).astype(np.float32)
     intrinsic = _get_intrinsic(rdepth.shape, focal)
     ref_pose, src_pose = _get_ref_src_pose()
-    env_pose = _get_env_pose(env_coords, ep_fraction, focal, ref_depth)
+    env_pose = _get_env_pose(env_coords, focal, ref_depth[0])
 
     return {
         'intrinsics': intrinsic,
@@ -99,16 +99,16 @@ def _get_ref_src_pose():
     return ref_pose, src_pose
 
 
-def _get_env_pose(coords, fraction, focal, ref_depth):
-    n_rows, n_cols = ref_depth[0].shape
+def _get_env_pose(coords, focal, ref_depth):
+    n_rows, n_cols = ref_depth.shape
 
     # Coordinates in camera space
     x_cam, y_cam = coords
-    x_cam = fraction * x_cam - n_cols / 2.
-    y_cam = n_rows / 2. - fraction * y_cam
+    x_cam = x_cam - n_cols / 2.
+    y_cam = n_rows / 2. - y_cam
 
     # Depth of the env location
-    env_z = ref_depth[0, int(fraction * coords[1]), int(fraction * coords[0])]
+    env_z = ref_depth[int(coords[1]), int(coords[0])]
 
     # Coordinates in world space
     fx, fy = focal

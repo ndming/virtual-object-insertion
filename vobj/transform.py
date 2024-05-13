@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.signal import convolve2d
 
 
 def rotate_env_map(
@@ -112,10 +113,42 @@ def depth_to_ref(depth: np.ndarray, min_depth, max_depth) -> np.ndarray:
     return ref_depth.astype(np.float32)
 
 
+def convolve_ref_depth(ref_depth: np.ndarray, k_size=21) -> np.ndarray:
+    kernel = np.ones((k_size, k_size)) / (k_size * k_size)
+    return convolve2d(ref_depth, kernel, mode='same', boundary='wrap')
+
+
 def image_to_world(
-    coords: np.ndarray, 
+    im_coords: np.ndarray,
     ref_depth: np.ndarray, 
     focal: tuple[float, float],
+    normal: np.ndarray = None,
+    ref_point: np.ndarray = None,
 ) -> np.ndarray:
     n_rows, n_cols = ref_depth.shape
-    fx, fy = focal
+
+    # Camera coordinates
+    cam_coords = np.copy(im_coords)
+    cam_coords[:, 1] *= -1
+    cam_coords = cam_coords + np.array([-n_cols / 2., n_rows / 2.])
+
+    # Initial depth of each point based on the reference depth
+    z = ref_depth[im_coords[:, 1], im_coords[:, 0]]
+
+    # Set out the world coordinates at depth -1
+    n_points = im_coords.shape[0]
+    w_coords = np.hstack([cam_coords / np.array(focal), np.ones((n_points, 1))])
+    w_coords[:, 2] *= -1  # camera faces down the -Z direction
+
+    # If normality is imposed, tailor the depth so that points form a polygon
+    # whose surface normal as specified
+    if normal is not None:
+        if ref_point is None:
+            ref_point = w_coords[np.argmin(z)]
+            ref_point = ref_point * np.min(z)
+
+        # Compute and replace with the new depth
+        z = np.dot(ref_point, normal) / np.sum(w_coords * normal, axis=1)
+
+    w_coords *= z[:, np.newaxis]
+    return w_coords.astype(np.float32), ref_point

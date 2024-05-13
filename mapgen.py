@@ -230,7 +230,7 @@ if __name__ == "__main__":
     edepth = resize_efficient(depth)
     rdepth = depth_to_ref(np.array(edepth), args.dmin, args.dmax)
     focal = fov_to_focal(args.fov, edepth.size)
-    bundle = generate_bundle(target, source, rdepth, focal, obj_coords[0], E2P)
+    bundle = generate_bundle(target, source, rdepth, focal, E2P * obj_coords[0])
 
     logger.debug(f"ref_image shape: {bundle['ref_image'][0].shape}")
     logger.debug(f"src_image shape: {bundle['src_images'][0].shape}")

@@ -69,7 +69,12 @@ def coated_conductor_texture(albedo_file, rough_file):
     return textures, material, params
 
 
-def coated_diffuse(roughness, albedo, reflectance, thickness):
+def coated_diffuse(
+    roughness, 
+    albedo, 
+    reflectance=np.array([1.0, 1.0, 1.0]), 
+    thickness=0.01,
+):
     textures = []
     material = "coateddiffuse"
     params = [
