@@ -1,0 +1,13 @@
+accelerate==0.30.1
+coloredlogs==15.0.1
+diffusers==0.27.2
+h5py==3.11.0
+matplotlib==3.8.4
+opencv-python==4.9.0.80
+pillow==10.2.0
+pyexr==0.4.0
+scipy==1.13.0
+torch==2.3.0+cu121
+torchvision==0.18.0+cu121
+transformers==4.40.2
+xformers==0.0.26.post1
