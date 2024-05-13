@@ -120,7 +120,7 @@ def mpi_resample_cube(mpi, tgt, intrinsics, depth_planes, side_length,
   intrinsics_tile = tf.tile(intrinsics, [num_depths, 1, 1])
 
   # create cube coordinates
-  b_vals = tf.to_float(tf.range(batch_size))
+  b_vals = tf.cast(tf.range(batch_size), tf.float32)
   x_vals = tf.linspace(-side_length / 2.0, side_length / 2.0, cube_res)
   y_vals = tf.linspace(-side_length / 2.0, side_length / 2.0, cube_res)
   z_vals = tf.linspace(side_length / 2.0, -side_length / 2.0, cube_res)
@@ -149,7 +149,7 @@ def mpi_resample_cube(mpi, tgt, intrinsics, depth_planes, side_length,
   intrinsics_tile_4 = tf.concat([intrinsics_tile_4, filler], axis=1)
   coords_proj = cam2pixel(coords_r, intrinsics_tile_4)
   coords_depths = tf.transpose(coords_r[:, 2:3, :, :], [0, 2, 3, 1])
-  coords_depth_inds = (tf.to_float(num_depths) - 1) * (
+  coords_depth_inds = (tf.cast(num_depths, tf.float32) - 1) * (
       (1.0 / coords_depths) -
       (1.0 / depth_planes[0])) / ((1.0 / depth_planes[-1]) -
                                   (1.0 / depth_planes[0]))
@@ -194,20 +194,20 @@ def spherical_cubevol_resample(vol, env2ref, cube_center, side_length, n_phi,
   batch_size = tf.shape(vol)[0]
   height = tf.shape(vol)[1]
 
-  cube_res = tf.to_float(height)
+  cube_res = tf.cast(height, tf.float32)
 
   # create spherical coordinates
-  b_vals = tf.to_float(tf.range(batch_size))
+  b_vals = tf.cast(tf.range(batch_size), tf.float32)
   phi_vals = tf.linspace(0.0, np.pi, n_phi)
   theta_vals = tf.linspace(1.5 * np.pi, -0.5 * np.pi, n_theta)
 
   # compute radii to use
   x_vals = tf.linspace(-side_length / 2.0, side_length / 2.0,
-                       tf.to_int32(cube_res))
+                       tf.cast(cube_res, tf.int32))
   y_vals = tf.linspace(-side_length / 2.0, side_length / 2.0,
-                       tf.to_int32(cube_res))
+                       tf.cast(cube_res, tf.int32))
   z_vals = tf.linspace(side_length / 2.0, -side_length / 2.0,
-                       tf.to_int32(cube_res))
+                       tf.cast(cube_res, tf.int32))
   y_c, x_c, z_c = tf.meshgrid(y_vals, x_vals, z_vals, indexing='ij')
   x_c = x_c + cube_center[:, 0, tf.newaxis, tf.newaxis, tf.newaxis]
   y_c = y_c + cube_center[:, 1, tf.newaxis, tf.newaxis, tf.newaxis]
@@ -283,7 +283,7 @@ def over_composite(rgbas):
 
   alphas = rgbas[:, :, :, :, -1:]
   colors = rgbas[:, :, :, :, :-1]
-  transmittance = tf.cumprod(
+  transmittance = tf.math.cumprod(
       1.0 - alphas + 1.0e-8, axis=3, exclusive=True, reverse=True) * alphas
   output = tf.reduce_sum(transmittance * colors, axis=3)
   accum_alpha = tf.reduce_sum(transmittance, axis=3)
@@ -313,7 +313,7 @@ ALPHA_EPS = 1e-8
 def tfmm(A, B):
   """Redefined tensorflow matrix multiply."""
 
-  with tf.variable_scope('tfmm'):
+  with tf.compat.v1.variable_scope('tfmm'):
     return tf.reduce_sum(
         A[..., :, :, tf.newaxis] * B[..., tf.newaxis, :, :], axis=-2)
 
@@ -324,7 +324,7 @@ def myposes2mats(poses, fix_yx=False):
   #  hence the 'fix_yx' thing to convert from that format [-y x z]
   #  to the more conventional [x y z]
 
-  with tf.variable_scope('myposes2mats'):
+  with tf.compat.v1.variable_scope('myposes2mats'):
 
     def cat(arrs, ax):
       return tf.concat(arrs, ax)
@@ -355,7 +355,7 @@ def myposes2mats(poses, fix_yx=False):
 
     sh = tf.shape(poses)[:-2]
     sh = tf.concat([sh, tf.constant([3]), tf.constant([3])], -1)
-    with tf.variable_scope('Kstuff'):
+    with tf.compat.v1.variable_scope('Kstuff'):
       K = stk([f, m_z, -w * .5, m_z, f, -h * .5, m_z, m_z, -m_o], -1)
       K = tf.reshape(K, sh)
 
@@ -377,7 +377,7 @@ def plane_homogs(pose_t,
                  fix_yx=False):
   """To warp a single plane, for PSV creation and MPI rendering."""
 
-  with tf.variable_scope('plane_homogs'):
+  with tf.compat.v1.variable_scope('plane_homogs'):
     T_t2w, _, _, K_t_inv = myposes2mats(pose_t, fix_yx=fix_yx)
     _, T_w2s, K_s, _ = myposes2mats(pose_s, fix_yx=fix_yx)
 
@@ -412,7 +412,7 @@ def plane_homogs(pose_t,
 def homog_warp(img, H, retcos=False, window=None):
   """Clone of tf.contrib.image.transform (fails on the RTX 2080 Ti)."""
 
-  with tf.variable_scope('homog_warp'):
+  with tf.compat.v1.variable_scope('homog_warp'):
     sh = tf.shape(img)
     h, w = sh[-3], sh[-2]
 
@@ -451,7 +451,7 @@ def render_mpi_homogs(mpi_rgba,
                       debug=False):
   """Render view at newpose from MPI at pose."""
 
-  with tf.variable_scope('render_mpi_homogs'):
+  with tf.compat.v1.variable_scope('render_mpi_homogs'):
 
     outs = {}
     dispvals = tf.linspace(min_disp, max_disp, num_depths)
@@ -475,8 +475,8 @@ def render_mpi_homogs(mpi_rgba,
     mpiR_alpha = mpi_reproj[..., 3:4]  # 1 H W D 1
     mpiR_color = mpi_reproj[..., 0:3]  # 1 H W D 3
 
-    # Add small ALPHA_EPS to prevent gradient explosion nans from tf.cumprod
-    weights = mpiR_alpha * tf.cumprod(
+    # Add small ALPHA_EPS to prevent gradient explosion nans from cumprod
+    weights = mpiR_alpha * tf.math.cumprod(
         1. - mpiR_alpha + ALPHA_EPS, -2, exclusive=True, reverse=True)
     alpha_acc = tf.reduce_sum(weights[..., 0], -1)
     rendering = tf.reduce_sum(weights * mpiR_color, -2)
@@ -488,7 +488,7 @@ def render_mpi_homogs(mpi_rgba,
 def make_psv_homogs(img, pose, newpose, dispvals, num_depths, window=None):
   """Create a plane sweep volume, vectorized on initial axes of img and pose."""
 
-  with tf.variable_scope('make_cv_homogs'):
+  with tf.compat.v1.variable_scope('make_cv_homogs'):
 
     H = plane_homogs(
         newpose,

@@ -65,7 +65,7 @@ class MLV(object):
 
     # add pred tensors to outputs collection
     for i in pred:
-      tf.add_to_collection('outputs', pred[i])
+      tf.compat.v1.add_to_collection('outputs', pred[i])
 
     return pred
 
@@ -95,8 +95,8 @@ class MLV(object):
         [tf.zeros([batch_size, 1, 3]),
          tf.ones([batch_size, 1, 1])], axis=2)
     intrinsics_filler = tf.stack(
-        [tf.to_float(height),
-         tf.to_float(width), intrinsics[0, 0, 0]], axis=0)[:, tf.newaxis]
+        [tf.cast(height, tf.float32),
+         tf.cast(width, tf.float32), intrinsics[0, 0, 0]], axis=0)[:, tf.newaxis]
 
     ref_pose_c2w = ref_pose
     ref_pose_c2w = tf.concat([
@@ -139,7 +139,7 @@ class MLV(object):
     height = tf.shape(img)[1]
     width = tf.shape(img)[2]
     num_depths = planedepths.shape[0]
-    depth_inds = (tf.to_float(num_depths) - 1) * (
+    depth_inds = (tf.cast(num_depths, tf.float32) - 1) * (
         (1.0 / depth) - (1.0 / planedepths[0])) / ((1.0 / planedepths[-1]) -
                                                    (1.0 / planedepths[0]))
     depth_inds = tf.round(depth_inds)
@@ -147,12 +147,12 @@ class MLV(object):
         tf.tile(depth_inds[:, :, :, tf.newaxis], [1, 1, 1, num_depths]))
     _, _, d = tf.meshgrid(
         tf.range(height), tf.range(width), tf.range(num_depths), indexing='ij')
-    mpi_colors = tf.to_float(
-        tf.tile(img[:, :, :, tf.newaxis, :], [1, 1, 1, num_depths, 1]))
-    mpi_alphas = tf.to_float(
+    mpi_colors = tf.cast(
+        tf.tile(img[:, :, :, tf.newaxis, :], [1, 1, 1, num_depths, 1]), tf.float32)
+    mpi_alphas = tf.cast(
         tf.where(
             tf.equal(depth_inds_tile, d), tf.ones_like(depth_inds_tile),
-            tf.zeros_like(depth_inds_tile)))
+            tf.zeros_like(depth_inds_tile)), tf.float32)
     mpi = tf.concat([mpi_colors, mpi_alphas[Ellipsis, tf.newaxis]], axis=4)
     return mpi
 
@@ -247,7 +247,7 @@ class MLV(object):
     num_scales = len(cubes)
 
     env_c2w = env_pose
-    env2ref = tf.matmul(tf.matrix_inverse(ref_pose), env_c2w)
+    env2ref = tf.matmul(tf.linalg.inv(ref_pose), env_c2w)
 
     # cube-->sphere resampling
     all_shells_list = []
@@ -269,7 +269,7 @@ class MLV(object):
                      cube_nest_inds[i][2] + cube_rel_shapes[i]),
             indexing='ij')
         inds = tf.stack([zm_y, zm_x, zm_z], axis=-1)
-        updates = tf.to_float(tf.ones_like(zm_x))
+        updates = tf.cast(tf.ones_like(zm_x), tf.float32)
         zero_mask = 1.0 - tf.scatter_nd(
             inds, updates, shape=[cube_shape, cube_shape, cube_shape])
         cube_removed = zero_mask[tf.newaxis, :, :, :, tf.newaxis] * cubes[i]
@@ -651,9 +651,9 @@ class MLV(object):
         [tf.zeros([batch_size, 1, 3]),
          tf.ones([batch_size, 1, 1])], axis=2)
     intrinsics_filler = tf.stack([
-        tf.to_float(height),
-        tf.to_float(width),
-        tf.to_float(intrinsics[0, 0, 0])
+        tf.cast(height, tf.float32),
+        tf.cast(width, tf.float32),
+        tf.cast(intrinsics[0, 0, 0], tf.float32),
     ],
                                  axis=0)[:, tf.newaxis]
 

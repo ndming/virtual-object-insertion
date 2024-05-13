@@ -26,6 +26,7 @@ from absl import flags
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+# import pyexr
 
 import lighthouse.geometry.projector as pj
 from lighthouse.mlv import MLV
@@ -37,18 +38,22 @@ flags.DEFINE_string(
     "data_dir", default="", help="InteriorNet test dataset directory")
 flags.DEFINE_string(
     "output_dir", default="", help="Output directory to save images")
+flags.DEFINE_string(
+    "width", default="", help="Width of the input images in pixel")
+flags.DEFINE_string(
+    "height", default="", help="Height of the input images in pixel")
 
 FLAGS = flags.FLAGS
 
 # Model parameters.
 batch_size = 1  # implementation only works for batch size 1 currently.
-height = 240  # px
-width = 320  # px
-env_height = 120  # px
-env_width = 240  # px
+# height = 180  # px
+# width = 320  # px
+# env_height = 120  # px
+# env_width = 240  # px
 cube_res = 64  # px
-theta_res = 240  # px
-phi_res = 120  # px
+theta_res = 360  # px
+phi_res = 180  # px
 r_res = 128  # px
 scale_factors = [2, 4, 8, 16]
 num_planes = 32
@@ -65,15 +70,22 @@ def main(argv):
     raise ValueError("`data_dir` must be defined")
   if FLAGS.output_dir is None:
     raise ValueError("`output_dir` must be defined")
+  if FLAGS.width is None:
+    raise ValueError("`width` must be defined")
+  if FLAGS.height is None:
+    raise ValueError("`height` must be defined")
+  
+  width = FLAGS.width
+  height = FLAGS.height
 
   # Set up placeholders
-  ref_image = tf.placeholder(dtype=tf.float32, shape=[None, height, width, 3])
-  ref_depth = tf.placeholder(dtype=tf.float32, shape=[None, height, width])
-  intrinsics = tf.placeholder(dtype=tf.float32, shape=[None, 3, 3])
-  ref_pose = tf.placeholder(dtype=tf.float32, shape=[None, 4, 4])
-  src_images = tf.placeholder(dtype=tf.float32, shape=[None, height, width, 3])
-  src_poses = tf.placeholder(dtype=tf.float32, shape=[None, 4, 4, 1])
-  env_pose = tf.placeholder(dtype=tf.float32, shape=[None, 4, 4])
+  ref_image = tf.compat.v1.placeholder(dtype=tf.float32, shape=[None, height, width, 3])
+  ref_depth = tf.compat.v1.placeholder(dtype=tf.float32, shape=[None, height, width])
+  intrinsics = tf.compat.v1.placeholder(dtype=tf.float32, shape=[None, 3, 3])
+  ref_pose = tf.compat.v1.placeholder(dtype=tf.float32, shape=[None, 4, 4])
+  src_images = tf.compat.v1.placeholder(dtype=tf.float32, shape=[None, height, width, 3])
+  src_poses = tf.compat.v1.placeholder(dtype=tf.float32, shape=[None, 4, 4, 1])
+  env_pose = tf.compat.v1.placeholder(dtype=tf.float32, shape=[None, 4, 4])
 
   # Set up model
   model = MLV()
@@ -109,17 +121,17 @@ def main(argv):
 
   input_files = sorted(
       [f for f in os.listdir(FLAGS.data_dir) if f.endswith(".npz")])
-  print("found {:05d} input files".format(len(input_files)))
+  # print("found {:05d} input files".format(len(input_files)))
 
-  with tf.Session() as sess:
-    saver = tf.train.Saver()
+  with tf.compat.v1.Session() as sess:
+    saver = tf.compat.v1.train.Saver()
     saver.restore(sess, os.path.join(FLAGS.checkpoint_dir, "model.ckpt"))
 
     for i in range(0, len(input_files)):
-      print("running example:", i)
+      # print("running example:", i)
 
       # Load inputs
-      batch = np.load(FLAGS.data_dir + input_files[i])
+      batch = np.load(os.path.join(FLAGS.data_dir, input_files[i]))
 
       output_envmap_eval, = sess.run(
           [output_envmap],
@@ -136,6 +148,7 @@ def main(argv):
       # Write environment map image
       plt.imsave(
           os.path.join(FLAGS.output_dir, "{:05d}.png".format(i)),
+          # os.path.join(FLAGS.output_dir, "lighthouse.png"),
           output_envmap_eval[0, :, :, :3])
 
 

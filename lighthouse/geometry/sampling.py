@@ -40,25 +40,25 @@ def trilerp_gather(vol, inds, bad_inds=None):
   # store invalid indices to implement correct out-of-bounds conditions
   invalid_x = tf.logical_or(
       tf.less(inds_x_0, 0.0),
-      tf.greater(inds_x_1, tf.to_float(tf.shape(vol)[2] - 1)))
+      tf.greater(inds_x_1, tf.cast(tf.shape(vol)[2] - 1, tf.float32)))
   invalid_y = tf.logical_or(
       tf.less(inds_y_0, 0.0),
-      tf.greater(inds_y_1, tf.to_float(tf.shape(vol)[1] - 1)))
+      tf.greater(inds_y_1, tf.cast(tf.shape(vol)[1] - 1, tf.float32)))
   invalid_z = tf.logical_or(
       tf.less(inds_z_0, 0.0),
-      tf.greater(inds_z_1, tf.to_float(tf.shape(vol)[3] - 1)))
+      tf.greater(inds_z_1, tf.cast(tf.shape(vol)[3] - 1, tf.float32)))
   if bad_inds is not None:
     invalid_inds = tf.logical_or(
         tf.logical_or(tf.logical_or(invalid_x, invalid_y), invalid_z), bad_inds)
   else:
     invalid_inds = tf.logical_or(tf.logical_or(invalid_x, invalid_y), invalid_z)
 
-  inds_x_0 = tf.clip_by_value(inds_x_0, 0.0, tf.to_float(tf.shape(vol)[2] - 2))
-  inds_x_1 = tf.clip_by_value(inds_x_1, 0.0, tf.to_float(tf.shape(vol)[2] - 1))
-  inds_y_0 = tf.clip_by_value(inds_y_0, 0.0, tf.to_float(tf.shape(vol)[1] - 2))
-  inds_y_1 = tf.clip_by_value(inds_y_1, 0.0, tf.to_float(tf.shape(vol)[1] - 1))
-  inds_z_0 = tf.clip_by_value(inds_z_0, 0.0, tf.to_float(tf.shape(vol)[3] - 2))
-  inds_z_1 = tf.clip_by_value(inds_z_1, 0.0, tf.to_float(tf.shape(vol)[3] - 1))
+  inds_x_0 = tf.clip_by_value(inds_x_0, 0.0, tf.cast(tf.shape(vol)[2] - 2, tf.float32))
+  inds_x_1 = tf.clip_by_value(inds_x_1, 0.0, tf.cast(tf.shape(vol)[2] - 1, tf.float32))
+  inds_y_0 = tf.clip_by_value(inds_y_0, 0.0, tf.cast(tf.shape(vol)[1] - 2, tf.float32))
+  inds_y_1 = tf.clip_by_value(inds_y_1, 0.0, tf.cast(tf.shape(vol)[1] - 1, tf.float32))
+  inds_z_0 = tf.clip_by_value(inds_z_0, 0.0, tf.cast(tf.shape(vol)[3] - 2, tf.float32))
+  inds_z_1 = tf.clip_by_value(inds_z_1, 0.0, tf.cast(tf.shape(vol)[3] - 1, tf.float32))
 
   # compute interp weights
   w_x_0 = 1.0 - (inds_x - inds_x_0)
@@ -78,22 +78,22 @@ def trilerp_gather(vol, inds, bad_inds=None):
   w_1_1_1 = w_y_1 * w_x_1 * w_z_1
 
   # gather for interp
-  inds_0_0_0 = tf.to_int32(
-      tf.stack([inds_b, inds_y_0, inds_x_0, inds_z_0], axis=-1))
-  inds_1_0_0 = tf.to_int32(
-      tf.stack([inds_b, inds_y_1, inds_x_0, inds_z_0], axis=-1))
-  inds_0_1_0 = tf.to_int32(
-      tf.stack([inds_b, inds_y_0, inds_x_1, inds_z_0], axis=-1))
-  inds_0_0_1 = tf.to_int32(
-      tf.stack([inds_b, inds_y_0, inds_x_0, inds_z_1], axis=-1))
-  inds_1_1_0 = tf.to_int32(
-      tf.stack([inds_b, inds_y_1, inds_x_1, inds_z_0], axis=-1))
-  inds_0_1_1 = tf.to_int32(
-      tf.stack([inds_b, inds_y_0, inds_x_1, inds_z_1], axis=-1))
-  inds_1_0_1 = tf.to_int32(
-      tf.stack([inds_b, inds_y_1, inds_x_0, inds_z_1], axis=-1))
-  inds_1_1_1 = tf.to_int32(
-      tf.stack([inds_b, inds_y_1, inds_x_1, inds_z_1], axis=-1))
+  inds_0_0_0 = tf.cast(
+      tf.stack([inds_b, inds_y_0, inds_x_0, inds_z_0], axis=-1), tf.int32)
+  inds_1_0_0 = tf.cast(
+      tf.stack([inds_b, inds_y_1, inds_x_0, inds_z_0], axis=-1), tf.int32)
+  inds_0_1_0 = tf.cast(
+      tf.stack([inds_b, inds_y_0, inds_x_1, inds_z_0], axis=-1), tf.int32)
+  inds_0_0_1 = tf.cast(
+      tf.stack([inds_b, inds_y_0, inds_x_0, inds_z_1], axis=-1), tf.int32)
+  inds_1_1_0 = tf.cast(
+      tf.stack([inds_b, inds_y_1, inds_x_1, inds_z_0], axis=-1), tf.int32)
+  inds_0_1_1 = tf.cast(
+      tf.stack([inds_b, inds_y_0, inds_x_1, inds_z_1], axis=-1), tf.int32)
+  inds_1_0_1 = tf.cast(
+      tf.stack([inds_b, inds_y_1, inds_x_0, inds_z_1], axis=-1), tf.int32)
+  inds_1_1_1 = tf.cast(
+      tf.stack([inds_b, inds_y_1, inds_x_1, inds_z_1], axis=-1), tf.int32)
 
   vol_0_0_0 = tf.gather_nd(vol, inds_0_0_0) * w_0_0_0[Ellipsis, tf.newaxis]
   vol_1_0_0 = tf.gather_nd(vol, inds_1_0_0) * w_1_0_0[Ellipsis, tf.newaxis]
@@ -124,28 +124,28 @@ def bilerp_gather(img, inds):
       tf.range(tf.shape(img)[2]),
       indexing='ij')
 
-  inds_b = tf.to_float(inds_b)
+  inds_b = tf.cast(inds_b, tf.float32)
   inds_x = inds[Ellipsis, 0]
   inds_y = inds[Ellipsis, 1]
 
   inds_x_0 = tf.floor(inds_x)
-  inds_x_1 = inds_x_0 + 1
+  inds_x_1 = inds_x_0 + 1.
   inds_y_0 = tf.floor(inds_y)
-  inds_y_1 = inds_y_0 + 1
+  inds_y_1 = inds_y_0 + 1.
 
   # store invalid indices to implement correct out-of-bounds conditions
   invalid_x = tf.logical_or(
       tf.less(inds_x_0, 0.0),
-      tf.greater(inds_x_1, tf.to_float(tf.shape(img)[2] - 1)))
+      tf.greater(inds_x_1, tf.cast(tf.shape(img)[2] - 1, tf.float32)))
   invalid_y = tf.logical_or(
       tf.less(inds_y_0, 0.0),
-      tf.greater(inds_y_1, tf.to_float(tf.shape(img)[1] - 1)))
+      tf.greater(inds_y_1, tf.cast(tf.shape(img)[1] - 1, tf.float32)))
   invalid_inds = tf.logical_or(invalid_x, invalid_y)
 
-  inds_x_0 = tf.clip_by_value(inds_x_0, 0.0, tf.to_float(tf.shape(img)[2] - 2))
-  inds_x_1 = tf.clip_by_value(inds_x_1, 0.0, tf.to_float(tf.shape(img)[2] - 1))
-  inds_y_0 = tf.clip_by_value(inds_y_0, 0.0, tf.to_float(tf.shape(img)[1] - 2))
-  inds_y_1 = tf.clip_by_value(inds_y_1, 0.0, tf.to_float(tf.shape(img)[1] - 1))
+  inds_x_0 = tf.clip_by_value(inds_x_0, 0.0, tf.cast(tf.shape(img)[2] - 2, tf.float32))
+  inds_x_1 = tf.clip_by_value(inds_x_1, 0.0, tf.cast(tf.shape(img)[2] - 1, tf.float32))
+  inds_y_0 = tf.clip_by_value(inds_y_0, 0.0, tf.cast(tf.shape(img)[1] - 2, tf.float32))
+  inds_y_1 = tf.clip_by_value(inds_y_1, 0.0, tf.cast(tf.shape(img)[1] - 1, tf.float32))
 
   # compute interp weights
   w_x_0 = 1.0 - (inds_x - inds_x_0)
@@ -159,10 +159,10 @@ def bilerp_gather(img, inds):
   w_1_1 = w_y_1 * w_x_1
 
   # gather for interp
-  inds_0_0 = tf.to_int32(tf.stack([inds_b, inds_y_0, inds_x_0], axis=-1))
-  inds_1_0 = tf.to_int32(tf.stack([inds_b, inds_y_1, inds_x_0], axis=-1))
-  inds_0_1 = tf.to_int32(tf.stack([inds_b, inds_y_0, inds_x_1], axis=-1))
-  inds_1_1 = tf.to_int32(tf.stack([inds_b, inds_y_1, inds_x_1], axis=-1))
+  inds_0_0 = tf.cast(tf.stack([inds_b, inds_y_0, inds_x_0], axis=-1), tf.int32)
+  inds_1_0 = tf.cast(tf.stack([inds_b, inds_y_1, inds_x_0], axis=-1), tf.int32)
+  inds_0_1 = tf.cast(tf.stack([inds_b, inds_y_0, inds_x_1], axis=-1), tf.int32)
+  inds_1_1 = tf.cast(tf.stack([inds_b, inds_y_1, inds_x_1], axis=-1), tf.int32)
 
   img_0_0 = tf.gather_nd(img, inds_0_0) * w_0_0[Ellipsis, tf.newaxis]
   img_1_0 = tf.gather_nd(img, inds_1_0) * w_1_0[Ellipsis, tf.newaxis]

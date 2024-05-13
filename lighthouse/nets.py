@@ -25,7 +25,7 @@ import tensorflow as tf
 def mpi_net(inputs, scope='mpi_net'):
   """3D encoder-decoder conv net for predicting MPI."""
 
-  with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
+  with tf.compat.v1.variable_scope(scope, reuse=tf.compat.v1.AUTO_REUSE):
 
     ksize = 3
     norm = tf.contrib.layers.layer_norm
@@ -58,7 +58,7 @@ def mpi_net(inputs, scope='mpi_net'):
 
       # from https://github.com/tensorflow/tensorflow/issues/8246
 
-      with tf.variable_scope('repeat'):
+      with tf.compat.v1.variable_scope('repeat'):
         expanded_tensor = tf.expand_dims(tensor, -1)
         multiples = [1] + repeats
         tiled_tensor = tf.tile(expanded_tensor, multiples=multiples)
@@ -102,7 +102,7 @@ def mpi_net(inputs, scope='mpi_net'):
 
     width_list = [64, 32, 16, 8]
     for i in range(len(width_list)):
-      with tf.variable_scope('up_block{}'.format(i)):
+      with tf.compat.v1.variable_scope('up_block{}'.format(i)):
         skip = skips.pop()
         net = up_block(
             net, skip, width_list[i], do_double=(i < len(width_list) - 1))
@@ -136,7 +136,7 @@ def cube_net_multires(inputs,
                       scope='cube_net_multires'):
   """Multiresolution 3D encoder-decoder conv net for predicting lighting cubes."""
 
-  with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
+  with tf.compat.v1.variable_scope(scope, reuse=tf.compat.v1.AUTO_REUSE):
 
     ksize = 3
     norm = tf.contrib.layers.layer_norm
@@ -167,7 +167,7 @@ def cube_net_multires(inputs,
       """Nearest neighbor upsampling."""
 
       # from https://github.com/tensorflow/tensorflow/issues/8246
-      with tf.variable_scope('repeat'):
+      with tf.compat.v1.variable_scope('repeat'):
         expanded_tensor = tf.expand_dims(tensor, -1)
         multiples = [1] + repeats
         tiled_tensor = tf.tile(expanded_tensor, multiples=multiples)
@@ -211,7 +211,7 @@ def cube_net_multires(inputs,
       net = skips.pop()
 
       for i in range(len(width_list_up)):
-        with tf.variable_scope('up_block{}'.format(i)):
+        with tf.compat.v1.variable_scope('up_block{}'.format(i)):
           skip = skips.pop()
           net = up_block(
               net,
@@ -236,7 +236,7 @@ def cube_net_multires(inputs,
     outvols = []
     i_outvol_next = None
     for i in range(len(inputs)):
-      with tf.variable_scope('multires_level{}'.format(i)):
+      with tf.compat.v1.variable_scope('multires_level{}'.format(i)):
         if i == 0:
           i_input = tf.stop_gradient(inputs[0])
         else:
@@ -332,7 +332,7 @@ def discriminator(x_init, do_inorm=False, scope='discriminator'):
            scope='conv_0'):
     """2D conv helper function."""
 
-    with tf.variable_scope(scope):
+    with tf.compat.v1.variable_scope(scope):
       if pad > 0:
         h = x.get_shape().as_list()[1]
         if h % stride == 0:
@@ -381,7 +381,7 @@ def discriminator(x_init, do_inorm=False, scope='discriminator'):
 
       return x
 
-  with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
+  with tf.compat.v1.variable_scope(scope, reuse=tf.compat.v1.AUTO_REUSE):
     d_logit = []
     n_scale = 1
     for scale in range(n_scale):
