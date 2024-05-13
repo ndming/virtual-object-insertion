@@ -16,9 +16,10 @@ from vobj.dimension import get_pdim, HDR
 from vobj.operation import build_mask, erode_mask
 from vobj.validator import is_ccw
 from vobj.transform import (rotate_env_map, ldr_to_hdr, image_to_world, 
-                            fov_to_focal, convolve_ref_depth)
+                            convolve_ref_depth)
 
 from terminal import get_logger, verify_path, log_output
+from warnings import filterwarnings
 
 if __name__ == "__main__":
     parser = ArgumentParser(
@@ -38,14 +39,16 @@ if __name__ == "__main__":
         help="weight factor for Li et al.'s env map, default to 1.0")
     parser.add_argument('--w-house', type=float, default=1.0,
         help="weight factor for Pratul et al.'s env map, default to 1.0")
+    parser.add_argument('--g-fraction', type=float, default=0.25,
+        help="fraction of Li et al.'s env map to fill with 0, default to 0.5")
     parser.add_argument('--obj-material', type=str, default='glossy', 
         help="material of the virtual object, one of ['glossy', 'diffuse']")
-    parser.add_argument('--obj-scale', type=float, default=0.03, 
+    parser.add_argument('--obj-scale', type=float, default=0.1, 
         help="uniform scaling factor applied to the virtual object")
     parser.add_argument('--obj-rotate', default=[0.0, 0.0, 1.0, 0.0],
         type=float, nargs=4, help="orientation applied to the virtual object")
     parser.add_argument('--pixel-samples', type=int, default=1024, 
-        help="pixel sampling rate for I_all and I_pln scene, default to 1024")
+        help="pixel sampling rate for I_all and I_pln scenes, default to 1024")
 
     args = parser.parse_args()
 
@@ -79,6 +82,11 @@ if __name__ == "__main__":
 
     if not args.obj_material in ['glossy', 'diffuse']:
         logger.error(f"unsupported material {args.obj_material}")
+        exit(1)
+
+    if args.g_fraction < 0.0 or args.g_fraction > 1.0:
+        logger.error(f"invalid ground fraction provided: {args.g_fraction}")
+        exit(1)
 
     # Generate pbrt resources to a separate folder
     out_dir = res_dir/"pbrt"
@@ -86,9 +94,13 @@ if __name__ == "__main__":
 
     # Load and retrieve the prompting dimension of the target image
     target = Image.open(target_file)
-    target_size = get_pdim(target)
-    p_cols, p_rows = target_size
-    logger.debug(f"prompting dimensions: {target_size}")
+    prompt_size = get_pdim(target)
+    p_cols, p_rows = prompt_size
+    logger.debug(f"prompting dimensions: {prompt_size}")
+
+    # Resize and save a version of target to the rendering folder
+    target.resize(prompt_size).save(out_dir/"target.png")
+    log_output(logger, "target image saved to", out_dir/"target.png")
 
     # Load the plane and object coordinates
     coords = np.load(coords_file)
@@ -110,7 +122,7 @@ if __name__ == "__main__":
 
     # Load and average the normals within the mask region
     normal = Image.open(normal_file)
-    normal = np.array(normal.resize(target_size))
+    normal = np.array(normal.resize(prompt_size))
     pln_normal = np.mean(normal[plane_mask], axis=0).astype(np.float32)
     pln_normal = pln_normal / 127.5 - 1
     pln_normal = pln_normal / np.linalg.norm(pln_normal)
@@ -126,9 +138,13 @@ if __name__ == "__main__":
     irois_uv = irois_uv.astype(int)
     logger.debug(f"irois uv: {irois_uv}")
 
-    # Rotate Li et al.'s environment map
+    # Add ground and rotate Li et al.'s environment map
+    h_ground = int(args.g_fraction * HDR[1])
+    h_intact = HDR[1] - h_ground
     irois_env = irois[irois_uv[1], irois_uv[0], :, :, :]
-    irois_env = resize(irois_env, HDR, interpolation=INTER_LINEAR)
+    irois_env = resize(irois_env, (HDR[0], h_intact), interpolation=INTER_LINEAR)
+    irois_gnd = np.zeros([h_ground, HDR[0], 3], dtype=np.float32)
+    irois_env = np.concatenate([irois_gnd, irois_env], axis=0)
     irois_hdr = rotate_env_map(irois_env, pln_normal)
     logger.debug(f"irois HDR range: [{np.min(irois_hdr)}, {np.max(irois_hdr)}]")
 
@@ -146,13 +162,17 @@ if __name__ == "__main__":
 
     # Upscale Pratul et al.'s env map with StableDiffusion
     if args.upscale:
+        logger.info(
+            f"[>] upscaling Pratul et al.'s env map with StableDiffusion...")
         stable_diffusion_id = "stabilityai/stable-diffusion-x4-upscaler"
+        filterwarnings("ignore", category=FutureWarning)
         pipe = StableDiffusionUpscalePipeline.from_pretrained(
             stable_diffusion_id, torch_dtype=tr.float16)
         pipe = pipe.to("cuda")
 
         pipe.enable_xformers_memory_efficient_attention()
         house_env = pipe(prompt="", image=house_env).images[0]
+        filterwarnings("default", category=FutureWarning)
 
     # Convert Pratul et al.'s env map to HDR
     house_hdr = ldr_to_hdr(np.array(house_env))
@@ -168,13 +188,13 @@ if __name__ == "__main__":
 
     # Load and resize the albedo map to the target size
     albedo = Image.open(albedo_file)
-    albedo = albedo.resize(target_size)
+    albedo = albedo.resize(prompt_size)
     albedo.save(out_dir/"albedo.png")
     log_output(logger, "albedo map saved to", out_dir/"albedo.png")
 
     # Load and resize the rough map to the target size
     rough = Image.open(rough_file)
-    rough = rough.resize(target_size)
+    rough = rough.resize(prompt_size)
     rough.save(out_dir/"rough.png")
     log_output(logger, "rough map saved to", out_dir/"rough.png")
 
@@ -186,7 +206,7 @@ if __name__ == "__main__":
 
     # Convert image coordinates of the shadow plane to world coordinates
     pln_positions, ref_point = image_to_world(
-        pln_coords, rdepth, fov_to_focal(args.fov, target_size), pln_normal)
+        pln_coords, rdepth, args.fov, pln_normal)
     for i in range(pln_positions.shape[0]):
         logger.debug(f"pln positions[{i}]: {pln_positions[i]}")
     pln_positions = adapter.adapt_basis(pln_positions)
@@ -210,15 +230,15 @@ if __name__ == "__main__":
 
     # Convert image coordinates of the object to world coordinates
     logger.debug(f"obj coordinates: {obj_coords[0]}")
-    focal = fov_to_focal(args.fov, target_size)
     obj_position, _ = image_to_world(
-        obj_coords, rdepth, focal, pln_normal, ref_point)
+        obj_coords, rdepth, args.fov, pln_normal, ref_point)
     logger.debug(f"obj position: {obj_position[0]}")
     obj_position = adapter.adapt_basis(obj_position)
 
     # Define material and transform of the object
     if args.obj_material == 'glossy':
-        m_textures, m_type, m_params = material.conductor(roughness=0.01)
+        m_textures, m_type, m_params = material.conductor(
+            roughness=0.001, reflectance=np.array([0.8, 0.8, 0.8]))
 
     elif args.obj_material == 'diffuse':
         m_textures, m_type, m_params = material.coated_diffuse(
@@ -233,8 +253,7 @@ if __name__ == "__main__":
         albedo_file=out_dir/"albedo.exr", rough_file=rough_file)
 
     # pbrt works with vertical fov, in degree
-    fov_rad = args.fov / (p_cols / p_rows)
-    fov_deg = np.degrees(fov_rad)
+    fov_deg = args.fov / (p_cols / p_rows)
 
     # Generate I_all scene file description
     scene_writer_builder = writer.PBRW.Builder()

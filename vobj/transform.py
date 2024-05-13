@@ -96,11 +96,11 @@ def ldr_to_hdr(ldr: np.ndarray, gamma=2.2) -> np.ndarray:
 
 def fov_to_focal(fov_x, image_size) -> tuple[float, float]:
     n_cols, n_rows = image_size
-    fx = n_cols / (2. * np.tan(np.radians(fov_x / 2.0)))
-    aspect = n_cols / n_rows
+    fx = (n_cols - 1.) / (2. * np.tan(np.radians(fov_x / 2.0)))
+    aspect = float(n_cols) / n_rows
     fov_y = fov_x / aspect
-    fy = n_rows / (2. * np.tan(np.radians(fov_y / 2.0)))
-    return (fx, fy)
+    fy = (n_rows - 1.) / (2. * np.tan(np.radians(fov_y / 2.0)))
+    return (int(fx), int(fy))
 
 
 def depth_to_ref(depth: np.ndarray, min_depth, max_depth) -> np.ndarray:
@@ -121,24 +121,29 @@ def convolve_ref_depth(ref_depth: np.ndarray, k_size=21) -> np.ndarray:
 def image_to_world(
     im_coords: np.ndarray,
     ref_depth: np.ndarray, 
-    focal: tuple[float, float],
+    fov_deg: float,
     normal: np.ndarray = None,
     ref_point: np.ndarray = None,
 ) -> np.ndarray:
     n_rows, n_cols = ref_depth.shape
+    aspect = float(n_cols) / n_rows
+    tan_x = np.tan(np.radians(fov_deg / 2.0))
+    tan_y = tan_x / aspect
 
     # Camera coordinates
     cam_coords = np.copy(im_coords)
     cam_coords[:, 1] *= -1
-    cam_coords = cam_coords + np.array([-n_cols / 2., n_rows / 2.])
-
-    # Initial depth of each point based on the reference depth
-    z = ref_depth[im_coords[:, 1], im_coords[:, 0]]
+    cam_coords = cam_coords + np.array([-(n_cols - 1) / 2., (n_rows - 1) / 2.])
 
     # Set out the world coordinates at depth -1
     n_points = im_coords.shape[0]
-    w_coords = np.hstack([cam_coords / np.array(focal), np.ones((n_points, 1))])
+    half_image = np.array([(n_cols - 1) / 2., (n_rows - 1) / 2.])
+    w_coords = np.array([tan_x, tan_y]) * cam_coords / half_image
+    w_coords = np.hstack([w_coords, np.ones((n_points, 1))])
     w_coords[:, 2] *= -1  # camera faces down the -Z direction
+
+    # Initial depth of each point based on the reference depth
+    z = ref_depth[im_coords[:, 1], im_coords[:, 0]]
 
     # If normality is imposed, tailor the depth so that points form a polygon
     # whose surface normal as specified
