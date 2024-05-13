@@ -76,10 +76,10 @@ implementation employs Pratul et al.'s
 code heavily on TensorFlow `1.15.0`. Since the latest Python version supporting
 TensorFlow `1.15.0` is `3.7.x`, some major features that are required by most 
 packages used in this project are inapplicable. Therefore, a separate Python 
-environment shall be set up to run `lighthouse` independently.
+environment shall be set up to run lighthouse independently.
 
 We will create a common Python environment which handles most executions and a
-small one to take on `lighthouse`. The former will be referred to as `torch` and 
+small one to take on lighthouse. The former will be referred to as `torch` and 
 the latter `tensor`.
 
 It is recommended to use Python's `venv` module to set up
@@ -140,6 +140,17 @@ pip install tensorflow==1.15.0 matplotlib==2.2.3 scipy==1.1.0 protobuf==3.20.3 n
 ```
 
 A snapshot of `tensor` can be found in the `requirements-tensor.txt` file.
+
+## Prepare workspace
+- First clone the project:
+```
+git clone https://github.com/ndming/virtual-object-insertion.git
+cd virtual-object-insertion
+```
+- Download [checkpoints](https://drive.google.com/drive/folders/1VQjRpInmfspz0Rw0Dlm9RbdHX5ziFeDI) 
+for Pratul et al.'s lighthouse and place them in `lighthouse/model`
+- Download [checkpoints](http://cseweb.ucsd.edu/~viscomp/projects/CVPR20InverseIndoor/models.zip)
+for Li et al.'s inverse rendering and place them in `irois/models`
 
 ## Usage
 The Python scripts that respectively govern the 4 stages of the pipeline are:
