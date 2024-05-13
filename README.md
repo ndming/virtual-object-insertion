@@ -107,7 +107,7 @@ deactivate
 Note that the Python version inside a virtual environment is the version of the
 Python intepreter that was used to run the `venv` module.
 
-#### torch
+#### torch environment
 Despite not being the latest, Python `3.10` shall be used for this environment.
 The main responsibilty of `torch` is to handle packages from 
 [PyTorch](https://pytorch.org/get-started/locally/), for example to install
@@ -118,7 +118,7 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 ```
  
 PyTorch provides the lower layers for models maintained by the 
-[Hugging Face](https://github.com/huggingface) used in the implemenation:
+[Hugging Face](https://github.com/huggingface) community used in the implemenation:
 
 ```
 pip install transformers diffusers[torch] xformers
@@ -131,7 +131,7 @@ pip install Pillow opencv-python scipy h5py matplotlib coloredlogs pyexr
 
 A freezed snapshot of `torch` can be found in the `requirements-torch.txt` file.
 
-#### tensor
+#### tensor environment
 Unlike `torch`, Python `3.7` must be used for this environment. This means there
 must be 2 separate installations of Python on the machine.
 
