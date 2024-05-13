@@ -33,7 +33,7 @@ This section describes the steps to set up a working environment for this repo.
 will enable the rendering of `pbrt` on the GPU. Any OptiX version from `7.1` to
 `7.7` is applicable.
 
-### `pbrt`
+### pbrt
 `pbrt` must be built from source and the build instruction is detailed in their 
 GitHub [homepage](https://github.com/mmp/pbrt-v4). The following scripts might 
 help:
@@ -107,7 +107,7 @@ deactivate
 Note that the Python version inside a virtual environment is the version of the
 Python intepreter that was used to run the `venv` module.
 
-#### `torch`
+#### torch
 Despite not being the latest, Python `3.10` shall be used for this environment.
 The main responsibilty of `torch` is to handle packages from 
 [PyTorch](https://pytorch.org/get-started/locally/), for example to install
@@ -131,7 +131,7 @@ pip install Pillow opencv-python scipy h5py matplotlib coloredlogs pyexr
 
 A freezed snapshot of `torch` can be found in the `requirements-torch.txt` file.
 
-#### `tensor`
+#### tensor
 Unlike `torch`, Python `3.7` must be used for this environment. This means there
 must be 2 separate installations of Python on the machine.
 
