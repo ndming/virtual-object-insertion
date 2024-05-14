@@ -37,7 +37,10 @@ nvidia-smi
 
 - It is required to install **exactly** either
 [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive) version 
-`11.8` or `12.1`.
+`11.8` or `12.1`. The reason is that `pbrt` requires CUDA toolkit for GPU 
+rendering. However, once installed, PyTorch will use this CUDA version instead 
+of their prebuilt CUDA runtime. Because PyTorch only works with CUDA `11.8` and 
+`12.1`, the choice for CUDA toolkit version is limited to those two only.
 - [OptiX SDK](https://developer.nvidia.com/designworks/optix/downloads/legacy) 
 will enable the rendering of `pbrt` on the GPU. Any OptiX version from `7.1` to
 `7.7` is applicable.
