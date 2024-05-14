@@ -144,7 +144,8 @@ if __name__ == "__main__":
     log_output(logger, "depth map generated at", depth_file)
 
     # Save the raw depth as reference depth
-    ref_depth = depth_to_ref(np.array(depth), args.dmin, args.dmax)
+    ref_depth = resize_prompting(depth)
+    ref_depth = depth_to_ref(np.array(ref_depth), args.dmin, args.dmax)
     ref_depth_file = output_dir/"ref_depth.npy"
     np.save(ref_depth_file, ref_depth)
     log_output(logger, "reference depth saved to", ref_depth_file)

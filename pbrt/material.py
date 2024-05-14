@@ -102,6 +102,27 @@ def coated_diffuse(
     return textures, material, params
 
 
+def coated_diffuse_texture(albedo_file, rough_file):
+    textures = [
+        f"Texture \"albedo\" \"spectrum\" \"imagemap\" \"string filename\" [ \"{albedo_file.name}\" ]",
+        f"Texture \"rough\" \"float\" \"imagemap\" \"string filename\" [ \"{rough_file.name}\" ]"
+    ]
+    material = "coateddiffuse"
+    params = [
+        {
+        
+            'name': "texture reflectance",
+            'value': "[ \"albedo\" ]",
+        },
+        {
+        
+            'name': "texture roughness",
+            'value': "[ \"rough\" ]",
+        },
+    ]
+    return textures, material, params
+
+
 def diffuse(reflectance=np.array([1.0, 1.0, 1.0])):
     textures = []
     material = "diffuse"
