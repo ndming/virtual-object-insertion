@@ -43,7 +43,7 @@ will enable the rendering of `pbrt` on the GPU. Any OptiX version from `7.1` to
 `7.7` is applicable.
 
 ### pbrt
-- `pbrt` must be built from source. The build instruction is detailed in their 
+- `pbrt` must be built from source. The build instruction is detailed on their 
 GitHub [homepage](https://github.com/mmp/pbrt-v4).
 - An example of the installation process of `pbrt`:
 
@@ -77,8 +77,8 @@ cmake --build build --config Release --target ALL_BUILD
 cmake --build build
 ```
 
-- The process at the end will generate several binaries, among which are the 
-`pbrt` executable and the `imgtool` program.
+- The process will generate several binaries, among which are the `pbrt` 
+executable and the `imgtool` program.
 
 ### OpenEXR
 - This package helps streamline the management of HDR contents. 
