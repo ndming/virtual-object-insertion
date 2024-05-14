@@ -27,6 +27,8 @@ if __name__ == "__main__":
 
     parser.add_argument('-debug', action='store_true',
         help="run in debug mode")
+    parser.add_argument('-cache', action='store_true',
+        help="skip the generation of env maps if they are already existed")
     parser.add_argument('-upscale', action='store_true',
         help="upscale Pratul et al.'s env map with StableDiffuser")
     parser.add_argument('--res-dir', type=str, required=True, 
@@ -88,6 +90,11 @@ if __name__ == "__main__":
         logger.error(f"invalid ground fraction provided: {args.g_fraction}")
         exit(1)
 
+    if args.w_irois <= 0.0 and args.w_house <= 0.0:
+        logger.error(f"received weights {args.w_irois} and {args.w_house}")
+        logger.error(f"cannot discard both env maps from the rendering!")
+        exit(1)
+
     # Generate pbrt resources to a separate folder
     out_dir = res_dir/"pbrt"
     makedirs(out_dir, exist_ok=True)
@@ -128,63 +135,86 @@ if __name__ == "__main__":
     pln_normal = pln_normal / np.linalg.norm(pln_normal)
     logger.debug(f"plane normal: {pln_normal}")
 
-    # Load Li et al.'s env map
-    irois = np.load(irois_file)
-    logger.debug(f"irois env map shape: {irois.shape}")
-
-    # Extract local lighting from Li et al.'s envmap
-    obj_frac = (obj_coords[0] - 1.) / np.array([p_cols - 1., p_rows - 1.])
-    irois_uv = obj_frac * np.array([irois.shape[1], irois.shape[0]]) - 1.
-    irois_uv = irois_uv.astype(int)
-    logger.debug(f"irois uv: {irois_uv}")
-
-    # Add ground and rotate Li et al.'s environment map
-    h_ground = int(args.g_fraction * HDR[1])
-    h_intact = HDR[1] - h_ground
-    irois_env = irois[irois_uv[1], irois_uv[0], :, :, :]
-    irois_env = resize(irois_env, (HDR[0], h_intact), interpolation=INTER_LINEAR)
-    irois_gnd = np.zeros([h_ground, HDR[0], 3], dtype=np.float32)
-    irois_env = np.concatenate([irois_gnd, irois_env], axis=0)
-    irois_hdr = rotate_env_map(irois_env, pln_normal)
-    logger.debug(f"irois HDR range: [{np.min(irois_hdr)}, {np.max(irois_hdr)}]")
-
-    # Export Li et al.'s env maps
+    # Process Li et al.'s env map
     irois_hdr_file = out_dir/"irois.hdr"
     irois_exr_file = out_dir/"irois.exr"
-    px.write(str(irois_hdr_file), np.flip(irois_hdr, axis=2))
-    px.write(str(irois_exr_file), np.flip(irois_hdr, axis=2))
-    log_output(logger, "Li et al.'s env map saved to", irois_hdr_file)
-    log_output(logger, "Li et al.'s env map saved to", irois_exr_file)
+    # Skip the generation if possible
+    if irois_hdr_file.exists() and args.cache:
+        log_output(logger, "found existing file at", irois_hdr_file)
+        logger.info(f"[>] Li et al.'s env map generation will be skipped")
 
-    # Load Pratul et al.'s RGBA env map which must be converted to RGB
-    house_env = Image.open(house_file).convert("RGB")
-    logger.debug(f"house env map size: {house_env.size}")
+        # Resave the .exr file which might have been altered by pbrren.py
+        irois_hdr = px.read(irois_hdr_file)
+        px.write(irois_exr_file, irois_hdr)
+    else:
+        # Load Li et al.'s env map array
+        irois = np.load(irois_file)
+        logger.debug(f"irois env map shape: {irois.shape}")
 
-    # Upscale Pratul et al.'s env map with StableDiffusion
-    if args.upscale:
-        logger.info(
-            f"[>] upscaling Pratul et al.'s env map with StableDiffusion...")
-        stable_diffusion_id = "stabilityai/stable-diffusion-x4-upscaler"
-        filterwarnings("ignore", category=FutureWarning)
-        pipe = StableDiffusionUpscalePipeline.from_pretrained(
-            stable_diffusion_id, torch_dtype=tr.float16)
-        pipe = pipe.to("cuda")
+        # Extract local lighting from Li et al.'s envmap
+        obj_frac = (obj_coords[0] - 1.) / np.array([p_cols - 1., p_rows - 1.])
+        irois_uv = obj_frac * np.array([irois.shape[1], irois.shape[0]]) - 1.
+        irois_uv = irois_uv.astype(int)
+        logger.debug(f"irois uv: {irois_uv}")
 
-        pipe.enable_xformers_memory_efficient_attention()
-        house_env = pipe(prompt="", image=house_env).images[0]
-        filterwarnings("default", category=FutureWarning)
+        # Add ground and rotate Li et al.'s environment map
+        h_ground = int(args.g_fraction * HDR[1])
+        h_intact = HDR[1] - h_ground
+        irois_env = irois[irois_uv[1], irois_uv[0], :, :, :]
+        irois_env = resize(
+            irois_env, (HDR[0], h_intact), interpolation=INTER_LINEAR)
+        irois_gnd = np.zeros([h_ground, HDR[0], 3], dtype=np.float32)
+        irois_env = np.concatenate([irois_gnd, irois_env], axis=0)
+        irois_hdr = rotate_env_map(irois_env, pln_normal)
+        logger.debug(
+            f"irois HDR range: [{np.min(irois_hdr)}, {np.max(irois_hdr)}]")
 
-    # Convert Pratul et al.'s env map to HDR
-    house_hdr = ldr_to_hdr(np.array(house_env))
-    logger.debug(f"house HDR range: [{np.min(house_hdr)}, {np.max(house_hdr)}]")
+        # Export Li et al.'s env maps
+        px.write(irois_hdr_file, np.flip(irois_hdr, axis=2))
+        px.write(irois_exr_file, np.flip(irois_hdr, axis=2))
+        log_output(logger, "Li et al.'s env map saved to", irois_hdr_file)
+        log_output(logger, "Li et al.'s env map saved to", irois_exr_file)
 
-    # Export Pratul et al.'s env maps
+    # Process Pratul et al.'s env map
     house_hdr_file = out_dir/"lighthouse.hdr"
     house_exr_file = out_dir/"lighthouse.exr"
-    px.write(str(house_hdr_file), house_hdr)
-    px.write(str(house_exr_file), house_hdr)
-    log_output(logger, "Pratul et al.'s env map saved to", house_hdr_file)
-    log_output(logger, "Pratul et al.'s env map saved to", house_exr_file)
+    # Skip the generation if possible
+    if house_hdr_file.exists() and args.cache:
+        log_output(logger, "found existing file at", house_hdr_file)
+        logger.info(f"[>] Pratul et al.'s env map generation will be skipped")
+
+        # Resave the .exr file which might have been altered by pbrren.py
+        house_hdr = px.read(house_hdr_file)
+        px.write(house_exr_file, house_hdr)
+    else:
+        # Load Pratul et al.'s RGBA env map which must be converted to RGB
+        house_env = Image.open(house_file).convert("RGB")
+        logger.debug(f"house env map size: {house_env.size}")
+
+        # Upscale Pratul et al.'s env map with StableDiffusion
+        if args.upscale:
+            logger.info(
+                f"[>] upscaling Pratul et al.'s env map with StableDiffusion...")
+            stable_diffusion_id = "stabilityai/stable-diffusion-x4-upscaler"
+            filterwarnings("ignore", category=FutureWarning)
+            pipe = StableDiffusionUpscalePipeline.from_pretrained(
+                stable_diffusion_id, torch_dtype=tr.float16)
+            pipe = pipe.to("cuda")
+
+            pipe.enable_xformers_memory_efficient_attention()
+            house_env = pipe(prompt="", image=house_env).images[0]
+            filterwarnings("default", category=FutureWarning)
+
+        # Convert Pratul et al.'s env map to HDR
+        house_hdr = ldr_to_hdr(np.array(house_env))
+        logger.debug(
+            f"house HDR range: [{np.min(house_hdr)}, {np.max(house_hdr)}]")
+
+        # Export Pratul et al.'s env maps
+        px.write(str(house_hdr_file), house_hdr)
+        px.write(str(house_exr_file), house_hdr)
+        log_output(logger, "Pratul et al.'s env map saved to", house_hdr_file)
+        log_output(logger, "Pratul et al.'s env map saved to", house_exr_file)
 
     # Load and resize the albedo map to the target size
     albedo = Image.open(albedo_file)
@@ -287,8 +317,10 @@ if __name__ == "__main__":
         .film("spectral", p_cols, p_rows)\
         .build("plane.exr")
     
-    plane_writer.add_light_infinite(irois_exr_file, scale=args.w_irois)
-    plane_writer.add_light_infinite(house_exr_file, scale=args.w_house)
+    if args.w_irois > 0.0:
+        plane_writer.add_light_infinite(irois_exr_file, scale=args.w_irois)
+    if args.w_house > 0.0:
+        plane_writer.add_light_infinite(house_exr_file, scale=args.w_house)
     plane_writer.add_material('pln_mat', p_textures, p_type, p_params)
 
     plane_writer.add_attribute('pln_mat', [], pln_shape)

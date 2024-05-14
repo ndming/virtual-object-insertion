@@ -3,7 +3,7 @@ from tqdm import tqdm
 
 
 def run_pbrt(pbrt_file, render_file, gpu_enabled, logger):
-    logger.info(f"[pbrt] invoking pbrt for: {render_file.name}")
+    logger.info(f"[pbrt] render file: {render_file.name}")
 
     pbrt_cmd = f"{pbrt_file} {render_file}"
     if gpu_enabled: 
