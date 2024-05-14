@@ -27,7 +27,7 @@ This section describes the required components that need to be installed to set
 up the working environment for our repo.
 
 ### CUDA Toolkit and OptiX SDK
-These are optional components, but highly advisable to have for performance
+- These are optional components, but highly advisable to have for performance
 gain with GPU support.
 - To check the NVIDIA driver and the latest compatible CUDA version:
 
@@ -44,7 +44,7 @@ will enable the rendering of `pbrt` on the GPU. Any OptiX version from `7.1` to
 
 ### pbrt
 - `pbrt` must be built from source. The build instruction is detailed in their 
-GitHub [homepage](https://github.com/mmp/pbrt-v4)
+GitHub [homepage](https://github.com/mmp/pbrt-v4).
 - An example of the installation process of `pbrt`:
 
 ```
@@ -220,7 +220,7 @@ object into and the path to the Python executable in the `tensor` environment.
 For example, on Windows:
 
 ```
-python mapgen.py -cuda --img path/to/some/im.png --py37 path/to/tensor.Scripts/python.exe
+python mapgen.py -cuda --img path/to/some/im.png --py37 path/to/tensor/Scripts/python.exe
 ```
 
 The `-cuda` option should only be passed if PyTorch was installed with CUDA.
