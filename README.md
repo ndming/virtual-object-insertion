@@ -15,7 +15,7 @@ virtual object.
 generated scene description files. The implementation employs Matt Pharr's 
 [pbrt](https://github.com/mmp/pbrt-v4) to handle the shading of the object.
 - Virtual object insertion: this stages assembles the rendered scenes and
-programmatically edits in the shaded object.
+programmatically inserts the shaded object to an image.
 
 ## Environment setup
 The implementation depends heavily on Python and some external packages like
