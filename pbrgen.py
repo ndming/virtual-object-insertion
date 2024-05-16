@@ -294,8 +294,10 @@ if __name__ == "__main__":
         .film("spectral", p_cols, p_rows)\
         .build("scene.exr")
     
-    scene_writer.add_light_infinite(irois_exr_file, scale=args.w_irois)
-    scene_writer.add_light_infinite(house_exr_file, scale=args.w_house)
+    if args.w_irois > 0.0:
+        scene_writer.add_light_infinite(irois_exr_file, scale=args.w_irois)
+    if args.w_house > 0.0:    
+        scene_writer.add_light_infinite(house_exr_file, scale=args.w_house)
     scene_writer.add_material('obj_mat', m_textures, m_type, m_params)
     scene_writer.add_material('pln_mat', p_textures, p_type, p_params)
 
