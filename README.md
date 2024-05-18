@@ -10,7 +10,7 @@ feature maps like depth, normal, albedo, etc., together with files that aid the
 subsequent stages.
 - **Generation of render scripts**: this stage generates scene description files
 that orchestrate the rendering of the virtual object.
-- **Virtual object rendering**: this stage automates the rendering instructed in  
+- **Virtual object rendering**: this stage automates the rendering instructed in
 the generated scene description files. Our implementation employs Matt Pharr's 
 [pbrt](https://github.com/mmp/pbrt-v4) to handle the shading of the object.
 - **Virtual object insertion**: this stages assembles the rendered scenes and
@@ -27,7 +27,7 @@ This section describes the required components that need to be installed to set
 up the working environment for our repo.
 
 ### CUDA Toolkit and OptiX SDK
-- These are optional components, but highly advisable to have for performance
+- These are optional but highly advisable components to have for performance
 gain with GPU support.
 - To check the NVIDIA driver and the latest compatible CUDA version:
 
@@ -75,7 +75,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release --target ALL_BUILD
 ```
 
-- If using Makefile or Ninja:
+- If using Make or Ninja:
 ```
 cmake --build build
 ```
@@ -113,8 +113,8 @@ implementation employs Pratul et al.'s
 [lighthouse](https://github.com/pratulsrinivasan/lighthouse) which based their
 code heavily on TensorFlow `1.15.0`. 
 - Since the latest Python version supporting TensorFlow `1.15.0` is `3.7.x`, 
-some major features that are required by most packages used in this project are 
-inapplicable. 
+some major features required by most packages used in this project would be 
+missing.
 - Therefore, a separate Python environment shall be set up to run lighthouse 
 independently.
 - We will create a main Python environment which handles most major executions 
@@ -146,7 +146,7 @@ source torch/bin/activate
 deactivate
 ```
 
-- Note that Python intepreter version inside the virtual environment is the 
+- Note that the Python intepreter version inside a virtual environment is the 
 version of the Python intepreter that was used to run the `venv` module.
 
 #### torch environment
