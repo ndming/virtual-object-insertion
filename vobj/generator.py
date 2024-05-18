@@ -75,8 +75,8 @@ def _get_intrinsic(image_size, focal):
     fx, fy = focal
 
     intrinsic = np.array([
-        [fx, 0, n_cols / 2.], 
-        [0, fy, n_rows / 2.], 
+        [fx, 0, (n_cols - 1.) / 2.], 
+        [0, fy, (n_rows - 1.) / 2.], 
         [0, 0, 1]
     ], dtype=np.float32)
 
